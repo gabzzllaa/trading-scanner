@@ -1,0 +1,88 @@
+name: Trading Scanner
+
+on:
+  schedule:
+    # All times in UTC. Singapore (SGT) = UTC+8, EDT = UTC-4.
+    # Weekdays: 4 morning scans at 6, 7, 8, 9 PM SGT = 10, 11, 12, 13 UTC
+    - cron: '0 10 * * 1-5'   # 6:00 PM SGT / 6:00 AM ET
+    - cron: '0 11 * * 1-5'   # 7:00 PM SGT / 7:00 AM ET
+    - cron: '0 12 * * 1-5'   # 8:00 PM SGT / 8:00 AM ET
+    - cron: '0 13 * * 1-5'   # 9:00 PM SGT / 9:00 AM ET  ← 30 min before open
+    # Sunday: weekly watchlist refresh at 8 PM SGT = 12 UTC
+    - cron: '0 12 * * 0'     # 8:00 PM SGT (Sunday)
+  workflow_dispatch:
+    # Allows manual trigger from GitHub Actions tab
+    inputs:
+      mode:
+        description: 'Scanner mode'
+        required: true
+        default: 'morning'
+        type: choice
+        options:
+          - morning
+          - watchlist
+          - full
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: scanner/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r scanner/requirements.txt
+
+      - name: Restore watchlist cache
+        uses: actions/cache@v4
+        with:
+          path: scanner/data
+          key: watchlist-${{ runner.os }}-${{ hashFiles('scanner/data/watchlist.json') }}
+          restore-keys: |
+            watchlist-${{ runner.os }}-
+
+      - name: Determine scan mode
+        id: mode
+        run: |
+          # If manually triggered, use the input mode
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=${{ inputs.mode }}" >> $GITHUB_OUTPUT
+          # Sunday 12 UTC = watchlist rebuild
+          elif [ "$(date -u +%u)" = "7" ]; then
+            echo "mode=watchlist" >> $GITHUB_OUTPUT
+          else
+            echo "mode=morning" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run scanner
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python scanner/scanner.py --mode ${{ steps.mode.outputs.mode }}
+
+      - name: Save watchlist artifact
+        if: steps.mode.outputs.mode == 'watchlist'
+        uses: actions/upload-artifact@v4
+        with:
+          name: watchlist-${{ github.run_id }}
+          path: scanner/data/watchlist.json
+          retention-days: 90
+
+      - name: Save scan results artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-${{ github.run_id }}-${{ steps.mode.outputs.mode }}
+          path: |
+            scanner/data/latest_scan.json
+            scanner/data/history/
+          retention-days: 30

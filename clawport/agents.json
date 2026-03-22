@@ -1,0 +1,77 @@
+{
+  "version": "1.0",
+  "workspace": "Trading Scanner",
+  "agents": [
+    {
+      "id": "orchestrator",
+      "name": "Orchestrator",
+      "emoji": "🎯",
+      "color": "purple",
+      "role": "orchestrator",
+      "description": "Coordinates all scanner agents, dispatches morning scan workflow, aggregates results",
+      "reports_to": null,
+      "capabilities": ["schedule", "aggregate", "alert"],
+      "status": "active"
+    },
+    {
+      "id": "bagholder-scanner",
+      "name": "Bagholder Scanner",
+      "emoji": "📉",
+      "color": "red",
+      "role": "scanner",
+      "description": "Scans for bagholder exit liquidity setups — gap-up stocks with prolonged prior decline and hollow catalysts",
+      "reports_to": "orchestrator",
+      "capabilities": ["premarket_scan", "scoring", "trade_params"],
+      "script": "scanner/scanner.py",
+      "modes": ["morning", "full"],
+      "status": "active"
+    },
+    {
+      "id": "watchlist-builder",
+      "name": "Watchlist Builder",
+      "emoji": "📋",
+      "color": "amber",
+      "role": "screener",
+      "description": "Weekly Finviz screener — builds and refreshes the bagholder candidate watchlist",
+      "reports_to": "orchestrator",
+      "capabilities": ["finviz_scrape", "watchlist_scoring"],
+      "script": "scanner/scanner.py",
+      "modes": ["watchlist"],
+      "schedule": "weekly_sunday_8pm_sgt",
+      "status": "active"
+    },
+    {
+      "id": "orf-scanner",
+      "name": "ORF Scanner",
+      "emoji": "📊",
+      "color": "cyan",
+      "role": "scanner",
+      "description": "Opening range panic fade (planned) — fades stocks that break below opening range low",
+      "reports_to": "orchestrator",
+      "capabilities": [],
+      "status": "planned"
+    },
+    {
+      "id": "earnings-scanner",
+      "name": "Earnings Scanner",
+      "emoji": "💰",
+      "color": "blue",
+      "role": "scanner",
+      "description": "Earnings gap strategies (planned) — post-earnings fade setups",
+      "reports_to": "orchestrator",
+      "capabilities": [],
+      "status": "planned"
+    }
+  ],
+  "org_chart": {
+    "root": "orchestrator",
+    "tree": {
+      "orchestrator": [
+        "bagholder-scanner",
+        "watchlist-builder",
+        "orf-scanner",
+        "earnings-scanner"
+      ]
+    }
+  }
+}

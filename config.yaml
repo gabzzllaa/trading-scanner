@@ -1,0 +1,53 @@
+# Trading Scanner — Configuration
+# Bagholder Exit Liquidity Pattern
+
+# ── Capital & Risk ──────────────────────────────────────────────
+capital_usd: 10000
+risk_per_trade_pct: 0.01       # 1% of capital = $100 per trade
+max_daily_loss_pct: 0.02       # 2% of capital = $200 max daily loss
+stop_loss_pct: 0.10            # Stop 10% above pre-market high
+
+# ── Scoring Thresholds ──────────────────────────────────────────
+tier_a_plus_min: 35            # Score ≥35/60 → A+ setup, full trade params
+tier_monitor_min: 20           # Score 20–34/60 → Monitor
+tier_skip_max: 19              # Score <20 → Skip
+
+# ── Pre-market Filters ──────────────────────────────────────────
+min_gap_pct: 20                # Minimum gap % to include in scoring
+min_gap_pct_alert: 30          # Minimum gap % to consider for A+
+optimal_gap_pct: 50            # Optimal gap % for max score
+
+# ── Watchlist Filters (Finviz screener) ─────────────────────────
+watchlist_max_price: 10        # Max stock price ($)
+watchlist_min_short_float: 10  # Min short interest (% of float)
+watchlist_max_perf_6m: -30     # Max 6-month performance (%)
+watchlist_min_avg_vol: 100000  # Min average daily volume
+watchlist_max_stocks: 80       # Max stocks in watchlist
+watchlist_stale_days: 7        # Days before watchlist is considered stale
+
+# ── Timing ──────────────────────────────────────────────────────
+time_stop_et: "10:30 AM ET"
+time_stop_sgt: "10:30 PM SGT"
+market_open_et: "9:30 AM ET"
+market_open_sgt: "9:30 PM SGT"
+
+# ── Telegram ────────────────────────────────────────────────────
+# Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID as environment variables.
+# Do NOT put tokens here — use env vars or a .env file.
+telegram_enabled: true         # Set to false to disable alerts
+
+# ── Data Paths ──────────────────────────────────────────────────
+data_dir: scanner/data
+watchlist_file: scanner/data/watchlist.json
+latest_scan_file: scanner/data/latest_scan.json
+history_dir: scanner/data/history
+
+# ── Rate Limiting ───────────────────────────────────────────────
+finviz_rate_min_s: 0.8         # Min delay between Finviz requests (seconds)
+finviz_rate_max_s: 1.5         # Max delay between Finviz requests (seconds)
+
+# ── Strategy Notes (read-only) ──────────────────────────────────
+# NEVER auto-execute trades. Alert only. User makes final decision.
+# Condition 5 (catalyst check) is ALWAYS manual.
+# If catalyst is M&A / FDA approval / earnings beat → DO NOT TRADE.
+# All times shown in both ET and SGT.

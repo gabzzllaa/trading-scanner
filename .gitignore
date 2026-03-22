@@ -1,0 +1,18 @@
+# Environment variables - never commit these
+.env
+*.env
+
+# Finviz debug file
+finviz_test.html
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Scan history (optional - comment out if you want history in git)
+scanner/data/history/
+
+# OS files
+.DS_Store
+Thumbs.db
