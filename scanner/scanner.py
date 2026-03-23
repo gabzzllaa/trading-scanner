@@ -749,9 +749,12 @@ def score_gapper(g: dict) -> dict:
 # TELEGRAM NOTIFICATIONS
 # ===========================================================================
 
-def send_telegram_alert(candidates: list[dict]) -> None:
+def send_telegram_alert(candidates: list[dict], total_gappers: int = 0) -> None:
     """
-    Send formatted Telegram alert for A+ setups.
+    Send formatted Telegram alert after every morning scan.
+    - A+ setups get full trade parameters.
+    - Monitor setups get a brief mention.
+    - If no gappers at all, sends a "clear market" summary.
     Requires env vars: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.
     """
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -761,12 +764,51 @@ def send_telegram_alert(candidates: list[dict]) -> None:
         return
 
     a_plus = [c for c in candidates if c.get("tier") == "A+"]
-    if not a_plus:
-        print("  [Telegram] No A+ setups — nothing to send.")
+    monitor = [c for c in candidates if c.get("tier") == "Monitor"]
+    now_str = f"{_utc_to_et_str()} / {_utc_to_sgt_str()}"
+
+    # --- Case 1: No gappers found at all ---
+    if total_gappers == 0:
+        message = (
+            f"✅ *Scanner ran — {now_str}*\n"
+            f"No pre-market gappers found. Market may be quiet or pre-market hasn't started.\n"
+            f"_No action needed._"
+        )
+        _send_telegram_message(token, chat_id, message)
+        print("  [Telegram] ✅ Sent 'no gappers' summary.")
         return
 
+    # --- Case 2: Gappers found but none qualify ---
+    if not a_plus and not monitor:
+        message = (
+            f"📊 *Scanner ran — {now_str}*\n"
+            f"Found *{total_gappers} gapper(s)* — none meet the 20/60 threshold.\n"
+            f"_No setups today. Stand down._"
+        )
+        _send_telegram_message(token, chat_id, message)
+        print("  [Telegram] ✅ Sent 'no qualifying setups' summary.")
+        return
+
+    # --- Case 3: Monitor only (no A+) ---
+    if not a_plus:
+        lines = [
+            f"👀 *Scanner ran — {now_str}*",
+            f"Found *{total_gappers} gapper(s)* — {len(monitor)} Monitor setup(s), no A+.",
+            "",
+        ]
+        for c in monitor[:3]:
+            lines.append(
+                f"  • *{c['ticker']}*  {c.get('premarket_gap_pct', 0):.1f}% gap  "
+                f"Score: {c.get('total_score', 0)}/60"
+            )
+        lines += ["", "_No high-conviction setup today. Stand down._"]
+        _send_telegram_message(token, chat_id, "\n".join(lines))
+        print(f"  [Telegram] ✅ Sent monitor-only summary ({len(monitor)} setups).")
+        return
+
+    # --- Case 4: A+ setups found ---
     lines = [
-        f"🚨 *TRADING SCANNER ALERT* — {_utc_to_sgt_str()}",
+        f"🚨 *TRADING SCANNER ALERT* — {now_str}",
         f"Found *{len(a_plus)} A+ setup(s)* — Bagholder Exit Liquidity",
         "",
     ]
@@ -780,8 +822,13 @@ def send_telegram_alert(candidates: list[dict]) -> None:
             f"  Target 2: ${t.get('target2', '?')} (full gap fill)",
             f"  Shares: {t.get('shares', '?')}  |  Risk: ${t.get('risk_usd', '?')}",
             f"  Reward T1: ${t.get('reward_t1', '?')}  |  Reward T2: ${t.get('reward_t2', '?')}",
+            f"  🔗 Reddit: https://www.reddit.com/search/?q={c['ticker']}",
+            f"  🔗 Stocktwits: https://stocktwits.com/symbol/{c['ticker']}",
             "",
         ]
+    if monitor:
+        lines.append(f"👀 Also monitoring: {', '.join(c['ticker'] for c in monitor[:5])}")
+        lines.append("")
     lines += [
         "⚠️ *Short at 9:30 PM SGT (9:30 AM ET) open.*",
         "⚠️ *Verify catalyst is hollow (check Reddit/Stocktwits).*",
@@ -789,7 +836,12 @@ def send_telegram_alert(candidates: list[dict]) -> None:
         "🚫 *If catalyst is M&A / FDA / earnings beat — DO NOT TRADE.*",
     ]
 
-    message = "\n".join(lines)
+    _send_telegram_message(token, chat_id, "\n".join(lines))
+    print(f"  [Telegram] ✅ Alert sent for {len(a_plus)} A+ setup(s).")
+
+
+def _send_telegram_message(token: str, chat_id: str, message: str) -> None:
+    """Send a single message via Telegram Bot API."""
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
         resp = requests.post(
@@ -798,7 +850,6 @@ def send_telegram_alert(candidates: list[dict]) -> None:
             timeout=15,
         )
         resp.raise_for_status()
-        print(f"  [Telegram] ✅ Alert sent for {len(a_plus)} A+ setup(s).")
     except Exception as e:
         print(f"  [Telegram] ✗ Failed to send: {e}")
 
@@ -880,6 +931,7 @@ def run_morning_mode():
     if not all_gappers:
         print("  No pre-market gappers found. Market may not be open yet or sources are down.")
         _save_scan([], "morning")
+        send_telegram_alert([], total_gappers=0)
         return []
 
     # Filter: gap ≥20% minimum to be worth scoring
@@ -925,8 +977,8 @@ def run_morning_mode():
     # Save results
     _save_scan(scored, "morning")
 
-    # Telegram alert
-    send_telegram_alert(scored)
+    # Telegram alert — always fires, passes total gapper count for context
+    send_telegram_alert(scored, total_gappers=len(all_gappers))
 
     return scored
 
