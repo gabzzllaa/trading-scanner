@@ -467,17 +467,20 @@ def scan_tradingview() -> list[dict]:
     """
     Fetch pre-market gappers from TradingView Scanner API.
     Returns list of dicts with ticker, premarket_gap_pct, price, prev_close.
+
+    TradingView's current API (2025+) requires:
+    - "markets" array instead of inline exchange filter
+    - "filter2" with operator/operands syntax for complex filters
+    - "filter" array still works for simple field filters
+    - Referer header to avoid 400s
     """
     print("  📡 TradingView Scanner API...")
     url = "https://scanner.tradingview.com/america/scan"
+
+    # Updated payload format for current TradingView API
     payload = {
-        "filter": [
-            {"left": "type", "operation": "equal", "right": "stock"},
-            {"left": "subtype", "operation": "in", "right": ["common"]},
-            {"left": "exchange", "operation": "in", "right": ["NASDAQ", "NYSE", "AMEX"]},
-            {"left": "is_primary", "operation": "equal", "right": True},
-            {"left": "premarket_change", "operation": "greater", "right": 0.20},
-        ],
+        "markets": ["america"],
+        "symbols": {"query": {"types": ["stock"]}, "tickers": []},
         "options": {"lang": "en"},
         "columns": [
             "name",
@@ -487,12 +490,40 @@ def scan_tradingview() -> list[dict]:
             "premarket_volume",
             "average_volume_10d_calc",
             "market_cap_basic",
+            "type",
+            "subtype",
         ],
+        "filter": [
+            {"left": "is_primary", "operation": "equal", "right": True},
+            {"left": "premarket_change", "operation": "greater", "right": 0.20},
+            {"left": "market_cap_basic", "operation": "greater", "right": 1000000},
+        ],
+        "filter2": {
+            "operator": "and",
+            "operands": [
+                {
+                    "operation": {
+                        "operator": "or",
+                        "operands": [
+                            {"expression": {"left": "type", "operation": "equal", "right": "stock"}},
+                        ],
+                    }
+                }
+            ],
+        },
         "sort": {"sortBy": "premarket_change", "sortOrder": "desc"},
         "range": [0, 50],
     }
+
+    headers = {
+        **HEADERS,
+        "Origin": "https://www.tradingview.com",
+        "Referer": "https://www.tradingview.com/",
+        "Content-Type": "application/json",
+    }
+
     try:
-        resp = requests.post(url, json=payload, headers=HEADERS, timeout=20)
+        resp = requests.post(url, json=payload, headers=headers, timeout=20)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
@@ -504,9 +535,10 @@ def scan_tradingview() -> list[dict]:
         d = item.get("d", [])
         if len(d) < 7:
             continue
-        ticker, prev_close, pm_price, pm_change, pm_vol, avg_vol, mkt_cap = d
+        ticker, prev_close, pm_price, pm_change, pm_vol, avg_vol, mkt_cap = d[:7]
         if not ticker or pm_price is None or prev_close is None:
             continue
+        # pm_change from TV is already a fraction (e.g. 0.35 = 35%)
         gap_pct = float(pm_change) * 100 if pm_change else 0
         results.append({
             "ticker": ticker.split(":")[1] if ":" in ticker else ticker,
