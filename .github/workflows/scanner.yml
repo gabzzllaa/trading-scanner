@@ -4,14 +4,20 @@ on:
   schedule:
     # All times in UTC. Singapore (SGT) = UTC+8, EDT = UTC-4.
     # Weekdays: 4 morning scans at 6, 7, 8, 9 PM SGT = 10, 11, 12, 13 UTC
-    - cron: '0 10 * * 1-5'   # 6:00 PM SGT / 6:00 AM ET
-    - cron: '0 11 * * 1-5'   # 7:00 PM SGT / 7:00 AM ET
-    - cron: '0 12 * * 1-5'   # 8:00 PM SGT / 8:00 AM ET
-    - cron: '0 13 * * 1-5'   # 9:00 PM SGT / 9:00 AM ET  ← 30 min before open
+    - cron: '0 10 * * 1-5'   # 6:00 PM SGT / 6:00 AM ET  ← scanner
+    - cron: '0 11 * * 1-5'   # 7:00 PM SGT / 7:00 AM ET  ← scanner
+    - cron: '0 12 * * 1-5'   # 8:00 PM SGT / 8:00 AM ET  ← scanner
+    - cron: '0 13 * * 1-5'   # 9:00 PM SGT / 9:00 AM ET  ← scanner (30 min before open)
+    # Paper trader lifecycle (weekdays, market hours)
+    - cron: '30 13 * * 1-5'  # 9:30 PM SGT / 9:30 AM ET  ← market open
+    - cron: '45 13 * * 1-5'  # 9:45 PM SGT / 9:45 AM ET  ← monitor
+    - cron: '0 14 * * 1-5'   # 10:00 PM SGT / 10:00 AM ET ← monitor
+    - cron: '15 14 * * 1-5'  # 10:15 PM SGT / 10:15 AM ET ← monitor
+    - cron: '30 14 * * 1-5'  # 10:30 PM SGT / 10:30 AM ET ← time stop close
+    - cron: '0 15 * * 1-5'   # 11:00 PM SGT / 11:00 AM ET ← session summary
     # Sunday: weekly watchlist refresh at 8 PM SGT = 12 UTC
     - cron: '0 12 * * 0'     # 8:00 PM SGT (Sunday)
   workflow_dispatch:
-    # Allows manual trigger from GitHub Actions tab
     inputs:
       mode:
         description: 'Scanner mode'
@@ -22,6 +28,18 @@ on:
           - morning
           - watchlist
           - full
+      paper_mode:
+        description: 'Paper trader mode (optional)'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - premarket
+          - open
+          - monitor
+          - close
+          - summary
 
 jobs:
   scan:
@@ -42,47 +60,122 @@ jobs:
       - name: Install dependencies
         run: pip install -r scanner/requirements.txt
 
-      - name: Restore watchlist cache
+      - name: Restore data cache
         uses: actions/cache@v4
         with:
           path: scanner/data
-          key: watchlist-${{ runner.os }}-${{ hashFiles('scanner/data/watchlist.json') }}
+          key: scanner-data-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
-            watchlist-${{ runner.os }}-
+            scanner-data-${{ runner.os }}-
 
-      - name: Determine scan mode
+      - name: Determine run mode
         id: mode
         run: |
-          # If manually triggered, use the input mode
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "mode=${{ inputs.mode }}" >> $GITHUB_OUTPUT
-          # Sunday 12 UTC = watchlist rebuild
-          elif [ "$(date -u +%u)" = "7" ]; then
-            echo "mode=watchlist" >> $GITHUB_OUTPUT
+          HOUR=$(date -u +%H)
+          MIN=$(date -u +%M)
+          DAY=$(date -u +%u)  # 1=Mon ... 7=Sun
+          EVENT="${{ github.event_name }}"
+
+          # Manual trigger
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            SCANNER_MODE="${{ inputs.mode }}"
+            PAPER_MODE="${{ inputs.paper_mode }}"
+            echo "scanner_mode=$SCANNER_MODE" >> $GITHUB_OUTPUT
+            echo "paper_mode=$PAPER_MODE" >> $GITHUB_OUTPUT
+            echo "run_scanner=true" >> $GITHUB_OUTPUT
+            echo "run_paper=$([ -n '$PAPER_MODE' ] && echo true || echo false)" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Sunday = watchlist only
+          if [ "$DAY" = "7" ]; then
+            echo "scanner_mode=watchlist" >> $GITHUB_OUTPUT
+            echo "paper_mode=" >> $GITHUB_OUTPUT
+            echo "run_scanner=true" >> $GITHUB_OUTPUT
+            echo "run_paper=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Weekday schedule routing
+          # Scanner runs: 10,11,12,13 UTC = 6,7,8,9 PM SGT
+          # Paper trader: 13:30=open, 13:45=monitor, 14:00=monitor, 14:15=monitor, 14:30=close, 15:00=summary
+          if   [ "$HOUR" = "10" ] || [ "$HOUR" = "11" ] || [ "$HOUR" = "12" ]; then
+            echo "scanner_mode=morning" >> $GITHUB_OUTPUT
+            echo "paper_mode=premarket" >> $GITHUB_OUTPUT
+            echo "run_scanner=true" >> $GITHUB_OUTPUT
+            echo "run_paper=true" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "13" ] && [ "$MIN" = "00" ]; then
+            echo "scanner_mode=morning" >> $GITHUB_OUTPUT
+            echo "paper_mode=premarket" >> $GITHUB_OUTPUT
+            echo "run_scanner=true" >> $GITHUB_OUTPUT
+            echo "run_paper=true" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "13" ] && [ "$MIN" = "30" ]; then
+            echo "scanner_mode=" >> $GITHUB_OUTPUT
+            echo "paper_mode=open" >> $GITHUB_OUTPUT
+            echo "run_scanner=false" >> $GITHUB_OUTPUT
+            echo "run_paper=true" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "13" ] && [ "$MIN" = "45" ]; then
+            echo "scanner_mode=" >> $GITHUB_OUTPUT
+            echo "paper_mode=monitor" >> $GITHUB_OUTPUT
+            echo "run_scanner=false" >> $GITHUB_OUTPUT
+            echo "run_paper=true" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "14" ] && [ "$MIN" = "00" ]; then
+            echo "scanner_mode=" >> $GITHUB_OUTPUT
+            echo "paper_mode=monitor" >> $GITHUB_OUTPUT
+            echo "run_scanner=false" >> $GITHUB_OUTPUT
+            echo "run_paper=true" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "14" ] && [ "$MIN" = "15" ]; then
+            echo "scanner_mode=" >> $GITHUB_OUTPUT
+            echo "paper_mode=monitor" >> $GITHUB_OUTPUT
+            echo "run_scanner=false" >> $GITHUB_OUTPUT
+            echo "run_paper=true" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "14" ] && [ "$MIN" = "30" ]; then
+            echo "scanner_mode=" >> $GITHUB_OUTPUT
+            echo "paper_mode=close" >> $GITHUB_OUTPUT
+            echo "run_scanner=false" >> $GITHUB_OUTPUT
+            echo "run_paper=true" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "15" ] && [ "$MIN" = "00" ]; then
+            echo "scanner_mode=" >> $GITHUB_OUTPUT
+            echo "paper_mode=summary" >> $GITHUB_OUTPUT
+            echo "run_scanner=false" >> $GITHUB_OUTPUT
+            echo "run_paper=true" >> $GITHUB_OUTPUT
           else
-            echo "mode=morning" >> $GITHUB_OUTPUT
+            echo "scanner_mode=morning" >> $GITHUB_OUTPUT
+            echo "paper_mode=" >> $GITHUB_OUTPUT
+            echo "run_scanner=true" >> $GITHUB_OUTPUT
+            echo "run_paper=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Run scanner
+        if: steps.mode.outputs.run_scanner == 'true'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          python scanner/scanner.py --mode ${{ steps.mode.outputs.mode }}
+          python scanner/scanner.py --mode ${{ steps.mode.outputs.scanner_mode }}
+
+      - name: Run paper trader
+        if: steps.mode.outputs.run_paper == 'true' && steps.mode.outputs.paper_mode != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python scanner/paper_trader.py --mode ${{ steps.mode.outputs.paper_mode }}
 
       - name: Save watchlist artifact
-        if: steps.mode.outputs.mode == 'watchlist'
+        if: steps.mode.outputs.scanner_mode == 'watchlist'
         uses: actions/upload-artifact@v4
         with:
           name: watchlist-${{ github.run_id }}
           path: scanner/data/watchlist.json
           retention-days: 90
 
-      - name: Save scan results artifact
+      - name: Save scan + paper trade results
         uses: actions/upload-artifact@v4
         with:
-          name: scan-${{ github.run_id }}-${{ steps.mode.outputs.mode }}
+          name: results-${{ github.run_id }}
           path: |
             scanner/data/latest_scan.json
+            scanner/data/paper_trades.json
             scanner/data/history/
           retention-days: 30
