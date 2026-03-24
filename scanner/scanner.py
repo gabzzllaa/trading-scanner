@@ -734,13 +734,22 @@ def score_gapper(g: dict) -> dict:
     g["total_score"] = total
     g["tier"] = tier
 
-    # Trade parameters for A+ setups
-    if tier == "A+" and g.get("pm_price") and g.get("prev_close"):
-        g["trade"] = compute_trade_params(
+    # Trade parameters for A+ and Monitor setups
+    if tier in ("A+", "Monitor") and g.get("pm_price") and g.get("prev_close"):
+        trade = compute_trade_params(
             g["ticker"],
             float(g["pm_price"]),
             float(g["prev_close"]),
         )
+        g["trade"] = trade
+
+        # R/R sanity check: if reward at T1 is ≤0 or R/R < 1:1, downgrade to Monitor
+        # This catches extreme penny-stock gaps where stop > retracement distance
+        if tier == "A+" and (trade["reward_t1"] <= 0 or trade.get("reward_t1", 0) < trade["risk_usd"]):
+            g["tier"] = "Monitor"
+            g["scores"]["tier"] = "Monitor"
+            g["scores"]["downgrade_reason"] = "Poor R/R — stop distance exceeds T1 reward"
+            print(f"  ⚠️  [{g['ticker']}] Downgraded A+ → Monitor: negative/poor R/R at T1")
 
     return g
 
@@ -937,6 +946,16 @@ def run_morning_mode():
     # Filter: gap ≥20% minimum to be worth scoring
     gappers_filtered = [g for g in all_gappers if (g.get("premarket_gap_pct") or 0) >= 20]
     print(f"  After ≥20% gap filter: {len(gappers_filtered)}")
+
+    # Filter: price must be ≥$0.50 to have meaningful R/R
+    # Sub-$0.50 stocks with 500%+ gaps have inverted R/R (stop > target distance)
+    gappers_filtered = [g for g in gappers_filtered if (g.get("pm_price") or 0) >= 0.50]
+    print(f"  After ≥$0.50 price filter: {len(gappers_filtered)}")
+
+    # Filter: gap ≤500% cap — beyond this the fade thesis still applies but
+    # R/R math breaks down and catalyst is almost certainly manufactured/pump
+    gappers_filtered = [g for g in gappers_filtered if (g.get("premarket_gap_pct") or 0) <= 500]
+    print(f"  After ≤500% gap cap: {len(gappers_filtered)}")
 
     # Cross-reference with watchlist
     gappers_filtered = cross_reference_watchlist(gappers_filtered, watchlist)
