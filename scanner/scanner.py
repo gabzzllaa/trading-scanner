@@ -947,15 +947,32 @@ def run_morning_mode():
     gappers_filtered = [g for g in all_gappers if (g.get("premarket_gap_pct") or 0) >= 20]
     print(f"  After ≥20% gap filter: {len(gappers_filtered)}")
 
-    # Filter: price must be ≥$0.50 to have meaningful R/R
-    # Sub-$0.50 stocks with 500%+ gaps have inverted R/R (stop > target distance)
+    # Filter: PM price must be ≥$0.50 — penny stocks have poor R/R and unreliable data
     gappers_filtered = [g for g in gappers_filtered if (g.get("pm_price") or 0) >= 0.50]
-    print(f"  After ≥$0.50 price filter: {len(gappers_filtered)}")
+    print(f"  After ≥$0.50 PM price filter: {len(gappers_filtered)}")
 
-    # Filter: gap ≤500% cap — beyond this the fade thesis still applies but
-    # R/R math breaks down and catalyst is almost certainly manufactured/pump
-    gappers_filtered = [g for g in gappers_filtered if (g.get("premarket_gap_pct") or 0) <= 500]
-    print(f"  After ≤500% gap cap: {len(gappers_filtered)}")
+    # Filter: prev_close sanity check
+    # If implied prev_close = pm_price / (1 + gap%/100) is <$0.10, the gap figure
+    # is almost certainly a data artifact (TradingView returning split-adjusted
+    # historical close instead of prior day's close). Discard these.
+    def _implied_prev_close(g: dict) -> float:
+        pm = g.get("pm_price") or 0
+        gap = g.get("premarket_gap_pct") or 0
+        if gap <= 0:
+            return pm
+        return pm / (1 + gap / 100)
+
+    before = len(gappers_filtered)
+    gappers_filtered = [g for g in gappers_filtered if _implied_prev_close(g) >= 0.10]
+    removed = before - len(gappers_filtered)
+    if removed:
+        print(f"  Removed {removed} ticker(s) with implausible prev_close (<$0.10) — likely bad gap data")
+    print(f"  After prev_close sanity filter: {len(gappers_filtered)}")
+
+    # Filter: gap ≤300% cap — gaps beyond this are almost always pump-and-dumps
+    # or data errors. The bagholder thesis requires a credible gap, not a 10x spike.
+    gappers_filtered = [g for g in gappers_filtered if (g.get("premarket_gap_pct") or 0) <= 300]
+    print(f"  After ≤300% gap cap: {len(gappers_filtered)}")
 
     # Cross-reference with watchlist
     gappers_filtered = cross_reference_watchlist(gappers_filtered, watchlist)
