@@ -149,12 +149,7 @@ def fetch_opening_range_movers() -> list[dict]:
         ],
         "filter": [
             {"left": "is_primary", "operation": "equal", "right": True},
-            # price ≥ $0.50
-            {"left": "lp", "operation": "greater", "right": 0.50},
-            # market cap > $1M
             {"left": "market_cap_basic", "operation": "greater", "right": 1_000_000},
-            # has today's open data
-            {"left": "open", "operation": "greater", "right": 0},
         ],
         "filter2": {
             "operator": "and",
