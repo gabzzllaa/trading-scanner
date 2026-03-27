@@ -776,15 +776,9 @@ def send_telegram_alert(candidates: list[dict], total_gappers: int = 0) -> None:
     monitor = [c for c in candidates if c.get("tier") == "Monitor"]
     now_str = f"{_utc_to_et_str()} / {_utc_to_sgt_str()}"
 
-    # --- Case 1: No gappers found at all ---
+    # --- Case 1: No gappers found at all — silent, no notification ---
     if total_gappers == 0:
-        message = (
-            f"✅ *Scanner ran — {now_str}*\n"
-            f"No pre-market gappers found. Market may be quiet or pre-market hasn't started.\n"
-            f"_No action needed._"
-        )
-        _send_telegram_message(token, chat_id, message)
-        print("  [Telegram] ✅ Sent 'no gappers' summary.")
+        print("  [Telegram] No gappers found — skipping notification.")
         return
 
     # --- Case 2: Gappers found but none qualify ---
