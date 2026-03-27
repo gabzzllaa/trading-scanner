@@ -3,33 +3,35 @@ name: Trading Scanner
 on:
   schedule:
     # All times in UTC. Singapore (SGT) = UTC+8, EDT = UTC-4.
-    # Weekdays: 4 morning scans at 6, 7, 8, 9 PM SGT = 10, 11, 12, 13 UTC
-    - cron: '0 10 * * 1-5'   # 6:00 PM SGT / 6:00 AM ET  ← scanner
-    - cron: '0 11 * * 1-5'   # 7:00 PM SGT / 7:00 AM ET  ← scanner
-    - cron: '0 12 * * 1-5'   # 8:00 PM SGT / 8:00 AM ET  ← scanner
-    - cron: '0 13 * * 1-5'   # 9:00 PM SGT / 9:00 AM ET  ← scanner (30 min before open)
-    # Paper trader lifecycle (weekdays, market hours)
+    # ── Bagholder pre-market scanner (6–9 AM ET = 10–13 UTC) ──
+    - cron: '0 10 * * 1-5'   # 6:00 PM SGT / 6:00 AM ET
+    - cron: '0 11 * * 1-5'   # 7:00 PM SGT / 7:00 AM ET
+    - cron: '0 12 * * 1-5'   # 8:00 PM SGT / 8:00 AM ET
+    - cron: '0 13 * * 1-5'   # 9:00 PM SGT / 9:00 AM ET  ← 30 min before open
+    # ── Bagholder paper trader lifecycle ──
     - cron: '30 13 * * 1-5'  # 9:30 PM SGT / 9:30 AM ET  ← market open
-    - cron: '45 13 * * 1-5'  # 9:45 PM SGT / 9:45 AM ET  ← monitor
-    - cron: '0 14 * * 1-5'   # 10:00 PM SGT / 10:00 AM ET ← monitor
-    - cron: '15 14 * * 1-5'  # 10:15 PM SGT / 10:15 AM ET ← monitor
-    - cron: '30 14 * * 1-5'  # 10:30 PM SGT / 10:30 AM ET ← time stop close
-    - cron: '0 15 * * 1-5'   # 11:00 PM SGT / 11:00 AM ET ← session summary
-    # Sunday: weekly watchlist refresh at 8 PM SGT = 12 UTC
+    - cron: '45 13 * * 1-5'  # 9:45 PM SGT / 9:45 AM ET  ← Bagholder monitor + ORF scan
+    - cron: '0 14 * * 1-5'   # 10:00 PM SGT / 10:00 AM ET ← Bagholder monitor + ORF monitor
+    - cron: '15 14 * * 1-5'  # 10:15 PM SGT / 10:15 AM ET ← Bagholder monitor
+    - cron: '30 14 * * 1-5'  # 10:30 PM SGT / 10:30 AM ET ← Bagholder close + ORF monitor
+    - cron: '0 15 * * 1-5'   # 11:00 PM SGT / 11:00 AM ET ← Bagholder summary + ORF close
+    - cron: '30 15 * * 1-5'  # 11:30 PM SGT / 11:30 AM ET ← ORF summary
+    # ── Sunday: weekly watchlist refresh ──
     - cron: '0 12 * * 0'     # 8:00 PM SGT (Sunday)
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Scanner mode'
-        required: true
-        default: 'morning'
+        description: 'Bagholder scanner mode'
+        required: false
+        default: ''
         type: choice
         options:
+          - ''
           - morning
           - watchlist
           - full
       paper_mode:
-        description: 'Paper trader mode (optional)'
+        description: 'Bagholder paper trader mode'
         required: false
         default: ''
         type: choice
@@ -40,11 +42,22 @@ on:
           - monitor
           - close
           - summary
+      orf_mode:
+        description: 'ORF scanner mode'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - scan
+          - monitor
+          - close
+          - summary
 
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
@@ -76,91 +89,117 @@ jobs:
           DAY=$(date -u +%u)  # 1=Mon ... 7=Sun
           EVENT="${{ github.event_name }}"
 
-          # Manual trigger
+          # ── Manual trigger ──
           if [ "$EVENT" = "workflow_dispatch" ]; then
-            SCANNER_MODE="${{ inputs.mode }}"
-            PAPER_MODE="${{ inputs.paper_mode }}"
-            echo "scanner_mode=$SCANNER_MODE" >> $GITHUB_OUTPUT
-            echo "paper_mode=$PAPER_MODE" >> $GITHUB_OUTPUT
-            echo "run_scanner=true" >> $GITHUB_OUTPUT
-            echo "run_paper=$([ -n '$PAPER_MODE' ] && echo true || echo false)" >> $GITHUB_OUTPUT
+            echo "scanner_mode=${{ inputs.mode }}" >> $GITHUB_OUTPUT
+            echo "paper_mode=${{ inputs.paper_mode }}" >> $GITHUB_OUTPUT
+            echo "orf_mode=${{ inputs.orf_mode }}" >> $GITHUB_OUTPUT
+            echo "run_scanner=$([ -n '${{ inputs.mode }}' ] && echo true || echo false)" >> $GITHUB_OUTPUT
+            echo "run_paper=$([ -n '${{ inputs.paper_mode }}' ] && echo true || echo false)" >> $GITHUB_OUTPUT
+            echo "run_orf=$([ -n '${{ inputs.orf_mode }}' ] && echo true || echo false)" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # Sunday = watchlist only
+          # ── Sunday = watchlist only ──
           if [ "$DAY" = "7" ]; then
             echo "scanner_mode=watchlist" >> $GITHUB_OUTPUT
             echo "paper_mode=" >> $GITHUB_OUTPUT
+            echo "orf_mode=" >> $GITHUB_OUTPUT
             echo "run_scanner=true" >> $GITHUB_OUTPUT
             echo "run_paper=false" >> $GITHUB_OUTPUT
+            echo "run_orf=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # Weekday schedule routing
-          # Scanner runs: 10,11,12,13 UTC = 6,7,8,9 PM SGT
-          # Paper trader: 13:30=open, 13:45=monitor, 14:00=monitor, 14:15=monitor, 14:30=close, 15:00=summary
-          if   [ "$HOUR" = "10" ] || [ "$HOUR" = "11" ] || [ "$HOUR" = "12" ]; then
-            echo "scanner_mode=morning" >> $GITHUB_OUTPUT
-            echo "paper_mode=premarket" >> $GITHUB_OUTPUT
-            echo "run_scanner=true" >> $GITHUB_OUTPUT
-            echo "run_paper=true" >> $GITHUB_OUTPUT
+          # ── Weekday schedule routing ──
+          #
+          # Bagholder schedule:
+          #   10,11,12,13:00 UTC  → scanner morning + paper premarket
+          #   13:30 UTC           → paper open
+          #   13:45, 14:00, 14:15 → paper monitor
+          #   14:30               → paper close
+          #   15:00               → paper summary
+          #
+          # ORF schedule:
+          #   13:45 UTC           → orf scan  (9:45 AM ET = 15 min after open)
+          #   14:00, 14:30 UTC    → orf monitor
+          #   15:00 UTC           → orf close
+          #   15:30 UTC           → orf summary
+
+          SCANNER_MODE=""
+          PAPER_MODE=""
+          ORF_MODE=""
+          RUN_SCANNER=false
+          RUN_PAPER=false
+          RUN_ORF=false
+
+          if [ "$HOUR" = "10" ] || [ "$HOUR" = "11" ] || [ "$HOUR" = "12" ]; then
+            SCANNER_MODE=morning; RUN_SCANNER=true
+            PAPER_MODE=premarket; RUN_PAPER=true
+
           elif [ "$HOUR" = "13" ] && [ "$MIN" = "00" ]; then
-            echo "scanner_mode=morning" >> $GITHUB_OUTPUT
-            echo "paper_mode=premarket" >> $GITHUB_OUTPUT
-            echo "run_scanner=true" >> $GITHUB_OUTPUT
-            echo "run_paper=true" >> $GITHUB_OUTPUT
+            SCANNER_MODE=morning; RUN_SCANNER=true
+            PAPER_MODE=premarket; RUN_PAPER=true
+
           elif [ "$HOUR" = "13" ] && [ "$MIN" = "30" ]; then
-            echo "scanner_mode=" >> $GITHUB_OUTPUT
-            echo "paper_mode=open" >> $GITHUB_OUTPUT
-            echo "run_scanner=false" >> $GITHUB_OUTPUT
-            echo "run_paper=true" >> $GITHUB_OUTPUT
+            PAPER_MODE=open; RUN_PAPER=true
+
           elif [ "$HOUR" = "13" ] && [ "$MIN" = "45" ]; then
-            echo "scanner_mode=" >> $GITHUB_OUTPUT
-            echo "paper_mode=monitor" >> $GITHUB_OUTPUT
-            echo "run_scanner=false" >> $GITHUB_OUTPUT
-            echo "run_paper=true" >> $GITHUB_OUTPUT
+            PAPER_MODE=monitor; RUN_PAPER=true
+            ORF_MODE=scan;    RUN_ORF=true   # ← ORF scan runs here
+
           elif [ "$HOUR" = "14" ] && [ "$MIN" = "00" ]; then
-            echo "scanner_mode=" >> $GITHUB_OUTPUT
-            echo "paper_mode=monitor" >> $GITHUB_OUTPUT
-            echo "run_scanner=false" >> $GITHUB_OUTPUT
-            echo "run_paper=true" >> $GITHUB_OUTPUT
+            PAPER_MODE=monitor; RUN_PAPER=true
+            ORF_MODE=monitor;  RUN_ORF=true
+
           elif [ "$HOUR" = "14" ] && [ "$MIN" = "15" ]; then
-            echo "scanner_mode=" >> $GITHUB_OUTPUT
-            echo "paper_mode=monitor" >> $GITHUB_OUTPUT
-            echo "run_scanner=false" >> $GITHUB_OUTPUT
-            echo "run_paper=true" >> $GITHUB_OUTPUT
+            PAPER_MODE=monitor; RUN_PAPER=true
+
           elif [ "$HOUR" = "14" ] && [ "$MIN" = "30" ]; then
-            echo "scanner_mode=" >> $GITHUB_OUTPUT
-            echo "paper_mode=close" >> $GITHUB_OUTPUT
-            echo "run_scanner=false" >> $GITHUB_OUTPUT
-            echo "run_paper=true" >> $GITHUB_OUTPUT
+            PAPER_MODE=close;  RUN_PAPER=true
+            ORF_MODE=monitor;  RUN_ORF=true
+
           elif [ "$HOUR" = "15" ] && [ "$MIN" = "00" ]; then
-            echo "scanner_mode=" >> $GITHUB_OUTPUT
-            echo "paper_mode=summary" >> $GITHUB_OUTPUT
-            echo "run_scanner=false" >> $GITHUB_OUTPUT
-            echo "run_paper=true" >> $GITHUB_OUTPUT
+            PAPER_MODE=summary; RUN_PAPER=true
+            ORF_MODE=close;    RUN_ORF=true
+
+          elif [ "$HOUR" = "15" ] && [ "$MIN" = "30" ]; then
+            ORF_MODE=summary;  RUN_ORF=true
+
           else
-            echo "scanner_mode=morning" >> $GITHUB_OUTPUT
-            echo "paper_mode=" >> $GITHUB_OUTPUT
-            echo "run_scanner=true" >> $GITHUB_OUTPUT
-            echo "run_paper=false" >> $GITHUB_OUTPUT
+            SCANNER_MODE=morning; RUN_SCANNER=true
           fi
 
-      - name: Run scanner
-        if: steps.mode.outputs.run_scanner == 'true'
+          echo "scanner_mode=$SCANNER_MODE" >> $GITHUB_OUTPUT
+          echo "paper_mode=$PAPER_MODE" >> $GITHUB_OUTPUT
+          echo "orf_mode=$ORF_MODE" >> $GITHUB_OUTPUT
+          echo "run_scanner=$RUN_SCANNER" >> $GITHUB_OUTPUT
+          echo "run_paper=$RUN_PAPER" >> $GITHUB_OUTPUT
+          echo "run_orf=$RUN_ORF" >> $GITHUB_OUTPUT
+
+      - name: Run Bagholder scanner
+        if: steps.mode.outputs.run_scanner == 'true' && steps.mode.outputs.scanner_mode != ''
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python scanner/scanner.py --mode ${{ steps.mode.outputs.scanner_mode }}
 
-      - name: Run paper trader
+      - name: Run Bagholder paper trader
         if: steps.mode.outputs.run_paper == 'true' && steps.mode.outputs.paper_mode != ''
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python scanner/paper_trader.py --mode ${{ steps.mode.outputs.paper_mode }}
+
+      - name: Run ORF scanner
+        if: steps.mode.outputs.run_orf == 'true' && steps.mode.outputs.orf_mode != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python scanner/orf_scanner.py --mode ${{ steps.mode.outputs.orf_mode }}
 
       - name: Save watchlist artifact
         if: steps.mode.outputs.scanner_mode == 'watchlist'
@@ -170,12 +209,14 @@ jobs:
           path: scanner/data/watchlist.json
           retention-days: 90
 
-      - name: Save scan + paper trade results
+      - name: Save all results artifact
         uses: actions/upload-artifact@v4
         with:
           name: results-${{ github.run_id }}
           path: |
             scanner/data/latest_scan.json
             scanner/data/paper_trades.json
+            scanner/data/orf_state.json
+            scanner/data/orf_paper_trades.json
             scanner/data/history/
           retention-days: 30
