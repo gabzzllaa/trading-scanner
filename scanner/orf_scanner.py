@@ -138,24 +138,23 @@ def fetch_opening_range_movers() -> list[dict]:
         "options": {"lang": "en"},
         "columns": [
             "name",
-            "close",           # prev day close
-            "open",            # today's open
-            "high",            # today's high so far
-            "low",             # today's low so far
-            "lp",              # last price
-            "volume",          # today's volume so far
+            "close",                   # prev day close
+            "open",                    # today's open
+            "high",                    # today's high so far
+            "low",                     # today's low so far
+            "lp",                      # last price
+            "volume",                  # today's volume so far
             "average_volume_10d_calc",
             "market_cap_basic",
-            "change_from_open",        # % change from open
         ],
         "filter": [
             {"left": "is_primary", "operation": "equal", "right": True},
-            # moved >2% from open (positive — upward spike candidates)
-            {"left": "change_from_open", "operation": "greater", "right": 0.02},
             # price ≥ $0.50
             {"left": "lp", "operation": "greater", "right": 0.50},
             # market cap > $1M
             {"left": "market_cap_basic", "operation": "greater", "right": 1_000_000},
+            # has today's open data
+            {"left": "open", "operation": "greater", "right": 0},
         ],
         "filter2": {
             "operator": "and",
@@ -170,7 +169,7 @@ def fetch_opening_range_movers() -> list[dict]:
                 }
             ],
         },
-        "sort": {"sortBy": "change_from_open", "sortOrder": "desc"},
+        "sort": {"sortBy": "volume", "sortOrder": "desc"},
         "range": [0, 50],
     }
     headers = {
@@ -194,25 +193,26 @@ def fetch_opening_range_movers() -> list[dict]:
         if len(d) < 9:
             continue
         name, prev_close, open_p, high, low, lp, volume, avg_vol, mkt_cap = d[:9]
-        change_from_open = d[9] if len(d) > 9 else None
 
         if not name or not open_p or not lp:
             continue
 
         ticker = name.split(":")[1] if ":" in name else name
 
-        # OR high = today's high so far (first 15 min)
-        # OR low = today's low so far (first 15 min)
         or_high = float(high) if high else float(lp)
         or_low = float(low) if low else float(lp)
         current_price = float(lp)
         open_price = float(open_p)
         prev_close_f = float(prev_close) if prev_close else None
 
-        # Calculate move % from open
-        move_pct = float(change_from_open) * 100 if change_from_open else (
+        # Calculate move % from open (computed, not from API field)
+        move_pct = (
             (current_price - open_price) / open_price * 100 if open_price else 0
         )
+
+        # Only include stocks that actually moved >2% from open
+        if move_pct < MIN_MOVE_PCT:
+            continue
 
         # Calculate gap % from prev close to open
         gap_pct = ((open_price - prev_close_f) / prev_close_f * 100) if prev_close_f and prev_close_f > 0 else 0
