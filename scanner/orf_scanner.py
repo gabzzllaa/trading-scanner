@@ -139,14 +139,31 @@ def fetch_opening_range_movers() -> list[dict]:
         "columns": [
             "name",
             "close",                   # prev day close
-            "open",                    # today's open
-            "high",                    # today's high so far
-            "low",                     # today's low so far
-            "lp",                      # last price
+            "open_price",              # today's open
+            "High",                    # today's high so far
+            "Low",                     # today's low so far
+            "last_price",              # last price
             "volume",                  # today's volume so far
             "average_volume_10d_calc",
             "market_cap_basic",
         ],
+        "filter": [
+            {"left": "is_primary", "operation": "equal", "right": True},
+            {"left": "market_cap_basic", "operation": "greater", "right": 1000000},
+        ],
+        "filter2": {
+            "operator": "and",
+            "operands": [
+                {
+                    "operation": {
+                        "operator": "or",
+                        "operands": [
+                            {"expression": {"left": "type", "operation": "equal", "right": "stock"}},
+                        ],
+                    }
+                }
+            ],
+        },
         "sort": {"sortBy": "volume", "sortOrder": "desc"},
         "range": [0, 100],
     }
