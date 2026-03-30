@@ -139,10 +139,10 @@ def fetch_opening_range_movers() -> list[dict]:
         "columns": [
             "name",
             "close",                   # prev day close
-            "open_price",              # today's open
-            "High",                    # today's high so far
-            "Low",                     # today's low so far
-            "last_price",              # last price
+            "open",                    # today's open
+            "high",                    # today's high so far
+            "low",                     # today's low so far
+            "lp",                      # last price
             "volume",                  # today's volume so far
             "average_volume_10d_calc",
             "market_cap_basic",
