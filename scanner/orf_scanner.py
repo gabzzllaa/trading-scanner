@@ -176,7 +176,9 @@ def fetch_opening_range_movers() -> list[dict]:
 
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=20)
-        resp.raise_for_status()
+        if not resp.ok:
+            print(f"    [!] TradingView error {resp.status_code}: {resp.text[:500]}")
+            return []
         data = resp.json()
     except Exception as e:
         print(f"    [!] TradingView error: {e}")
