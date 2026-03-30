@@ -149,23 +149,9 @@ def fetch_opening_range_movers() -> list[dict]:
         ],
         "filter": [
             {"left": "is_primary", "operation": "equal", "right": True},
-            {"left": "market_cap_basic", "operation": "greater", "right": 1_000_000},
         ],
-        "filter2": {
-            "operator": "and",
-            "operands": [
-                {
-                    "operation": {
-                        "operator": "or",
-                        "operands": [
-                            {"expression": {"left": "type", "operation": "equal", "right": "stock"}},
-                        ],
-                    }
-                }
-            ],
-        },
         "sort": {"sortBy": "volume", "sortOrder": "desc"},
-        "range": [0, 50],
+        "range": [0, 100],
     }
     headers = {
         **HEADERS,
@@ -204,6 +190,14 @@ def fetch_opening_range_movers() -> list[dict]:
         move_pct = (
             (current_price - open_price) / open_price * 100 if open_price else 0
         )
+
+        # Filter: price ≥ $0.50
+        if current_price < 0.50:
+            continue
+
+        # Filter: market cap ≥ $1M
+        if mkt_cap and float(mkt_cap) < 1_000_000:
+            continue
 
         # Only include stocks that actually moved >2% from open
         if move_pct < MIN_MOVE_PCT:
