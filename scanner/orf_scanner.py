@@ -147,9 +147,6 @@ def fetch_opening_range_movers() -> list[dict]:
             "average_volume_10d_calc",
             "market_cap_basic",
         ],
-        "filter": [
-            {"left": "is_primary", "operation": "equal", "right": True},
-        ],
         "sort": {"sortBy": "volume", "sortOrder": "desc"},
         "range": [0, 100],
     }
