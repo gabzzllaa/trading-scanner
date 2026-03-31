@@ -133,37 +133,40 @@ jobs:
           RUN_PAPER=false
           RUN_ORF=false
 
+          # Use ranges (±7 min) to handle GitHub Actions cron delays
+          HHMM=$((HOUR * 60 + MIN))
+
           if [ "$HOUR" = "10" ] || [ "$HOUR" = "11" ] || [ "$HOUR" = "12" ]; then
             SCANNER_MODE=morning; RUN_SCANNER=true
             PAPER_MODE=premarket; RUN_PAPER=true
 
-          elif [ "$HOUR" = "13" ] && [ "$MIN" = "00" ]; then
+          elif [ "$HHMM" -ge 773 ] && [ "$HHMM" -le 787 ]; then   # 13:00 ±7
             SCANNER_MODE=morning; RUN_SCANNER=true
             PAPER_MODE=premarket; RUN_PAPER=true
 
-          elif [ "$HOUR" = "13" ] && [ "$MIN" = "30" ]; then
+          elif [ "$HHMM" -ge 803 ] && [ "$HHMM" -le 817 ]; then   # 13:30 ±7
             PAPER_MODE=open; RUN_PAPER=true
 
-          elif [ "$HOUR" = "13" ] && [ "$MIN" = "45" ]; then
+          elif [ "$HHMM" -ge 818 ] && [ "$HHMM" -le 832 ]; then   # 13:45 ±7
             PAPER_MODE=monitor; RUN_PAPER=true
-            ORF_MODE=scan;    RUN_ORF=true   # ← ORF scan runs here
+            ORF_MODE=scan;    RUN_ORF=true
 
-          elif [ "$HOUR" = "14" ] && [ "$MIN" = "00" ]; then
+          elif [ "$HHMM" -ge 833 ] && [ "$HHMM" -le 847 ]; then   # 14:00 ±7
             PAPER_MODE=monitor; RUN_PAPER=true
             ORF_MODE=monitor;  RUN_ORF=true
 
-          elif [ "$HOUR" = "14" ] && [ "$MIN" = "15" ]; then
+          elif [ "$HHMM" -ge 848 ] && [ "$HHMM" -le 862 ]; then   # 14:15 ±7
             PAPER_MODE=monitor; RUN_PAPER=true
 
-          elif [ "$HOUR" = "14" ] && [ "$MIN" = "30" ]; then
+          elif [ "$HHMM" -ge 863 ] && [ "$HHMM" -le 877 ]; then   # 14:30 ±7
             PAPER_MODE=close;  RUN_PAPER=true
             ORF_MODE=monitor;  RUN_ORF=true
 
-          elif [ "$HOUR" = "15" ] && [ "$MIN" = "00" ]; then
+          elif [ "$HHMM" -ge 893 ] && [ "$HHMM" -le 907 ]; then   # 15:00 ±7
             PAPER_MODE=summary; RUN_PAPER=true
             ORF_MODE=close;    RUN_ORF=true
 
-          elif [ "$HOUR" = "15" ] && [ "$MIN" = "30" ]; then
+          elif [ "$HHMM" -ge 923 ] && [ "$HHMM" -le 937 ]; then   # 15:30 ±7
             ORF_MODE=summary;  RUN_ORF=true
 
           else
