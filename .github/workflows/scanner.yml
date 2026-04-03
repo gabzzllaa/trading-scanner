@@ -133,40 +133,40 @@ jobs:
           RUN_PAPER=false
           RUN_ORF=false
 
-          # Use ranges (±7 min) to handle GitHub Actions cron delays
+          # Use ranges (±15 min) to handle GitHub Actions cron delays
           HHMM=$((HOUR * 60 + MIN))
 
           if [ "$HOUR" = "10" ] || [ "$HOUR" = "11" ] || [ "$HOUR" = "12" ]; then
             SCANNER_MODE=morning; RUN_SCANNER=true
             PAPER_MODE=premarket; RUN_PAPER=true
 
-          elif [ "$HHMM" -ge 773 ] && [ "$HHMM" -le 787 ]; then   # 13:00 ±7
+          elif [ "$HHMM" -ge 765 ] && [ "$HHMM" -le 795 ]; then   # 13:00 ±15
             SCANNER_MODE=morning; RUN_SCANNER=true
             PAPER_MODE=premarket; RUN_PAPER=true
 
-          elif [ "$HHMM" -ge 803 ] && [ "$HHMM" -le 817 ]; then   # 13:30 ±7
+          elif [ "$HHMM" -ge 796 ] && [ "$HHMM" -le 824 ]; then   # 13:30 ±15 (up to 13:44)
             PAPER_MODE=open; RUN_PAPER=true
 
-          elif [ "$HHMM" -ge 818 ] && [ "$HHMM" -le 832 ]; then   # 13:45 ±7
+          elif [ "$HHMM" -ge 825 ] && [ "$HHMM" -le 839 ]; then   # 13:45 ±7 (narrow — between open and monitor)
             PAPER_MODE=monitor; RUN_PAPER=true
             ORF_MODE=scan;    RUN_ORF=true
 
-          elif [ "$HHMM" -ge 833 ] && [ "$HHMM" -le 847 ]; then   # 14:00 ±7
+          elif [ "$HHMM" -ge 840 ] && [ "$HHMM" -le 854 ]; then   # 14:00 ±7 (between scan and 14:15)
             PAPER_MODE=monitor; RUN_PAPER=true
             ORF_MODE=monitor;  RUN_ORF=true
 
-          elif [ "$HHMM" -ge 848 ] && [ "$HHMM" -le 862 ]; then   # 14:15 ±7
+          elif [ "$HHMM" -ge 855 ] && [ "$HHMM" -le 869 ]; then   # 14:15 ±7
             PAPER_MODE=monitor; RUN_PAPER=true
 
-          elif [ "$HHMM" -ge 863 ] && [ "$HHMM" -le 877 ]; then   # 14:30 ±7
+          elif [ "$HHMM" -ge 870 ] && [ "$HHMM" -le 899 ]; then   # 14:30 ±15
             PAPER_MODE=close;  RUN_PAPER=true
             ORF_MODE=monitor;  RUN_ORF=true
 
-          elif [ "$HHMM" -ge 893 ] && [ "$HHMM" -le 907 ]; then   # 15:00 ±7
+          elif [ "$HHMM" -ge 900 ] && [ "$HHMM" -le 929 ]; then   # 15:00 ±15
             PAPER_MODE=summary; RUN_PAPER=true
             ORF_MODE=close;    RUN_ORF=true
 
-          elif [ "$HHMM" -ge 923 ] && [ "$HHMM" -le 937 ]; then   # 15:30 ±7
+          elif [ "$HHMM" -ge 930 ] && [ "$HHMM" -le 959 ]; then   # 15:30 ±15
             ORF_MODE=summary;  RUN_ORF=true
 
           else
