@@ -1,0 +1,1768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Scanner — Agent Configurator</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2230;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --accent-red: #ff6b6b;
+    --accent-cyan: #56d0e0;
+    --accent-blue: #79b8ff;
+    --accent-amber: #f0a03a;
+    --accent-purple: #bf94f5;
+    --accent-green: #3fb950;
+    --accent-orange: #ffa657;
+    --badge-aplus: #1a3a1a;
+    --badge-aplus-text: #3fb950;
+    --badge-monitor: #2a2a10;
+    --badge-monitor-text: #f0a03a;
+    --badge-skip: #2a1010;
+    --badge-skip-text: #ff6b6b;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .header-logo {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: linear-gradient(135deg, #ff6b6b, #bf94f5);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .header h1 { font-size: 17px; font-weight: 600; }
+  .header .subtitle { font-size: 12px; color: var(--text-muted); }
+  .save-btn {
+    background: var(--accent-green);
+    color: #000;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: opacity 0.15s;
+  }
+  .save-btn:hover { opacity: 0.85; }
+  .save-btn.saved { background: var(--accent-blue); }
+
+  /* ── Layout ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    min-height: calc(100vh - 65px);
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 20px 0;
+  }
+  .nav-section-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    padding: 0 16px 8px;
+    margin-top: 16px;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 16px;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    transition: all 0.15s;
+    color: var(--text-muted);
+  }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active {
+    border-left-color: var(--accent-blue);
+    background: var(--surface2);
+    color: var(--text);
+  }
+  .nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
+  .nav-item .label { font-size: 13px; font-weight: 500; }
+  .nav-item .badge {
+    margin-left: auto;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: 600;
+  }
+  .badge-active { background: #1a3a1a; color: var(--accent-green); }
+  .badge-planned { background: #1a1a2a; color: var(--accent-blue); }
+
+  /* ── Main content ── */
+  .main {
+    padding: 28px 36px;
+    overflow-y: auto;
+    max-width: 900px;
+  }
+
+  /* ── Tabs ── */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ── Strategy card ── */
+  .strategy-hero {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 22px 24px;
+    margin-bottom: 28px;
+  }
+  .strategy-hero .hero-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  .strategy-icon {
+    font-size: 28px;
+    width: 50px; height: 50px;
+    background: var(--surface2);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .strategy-title { font-size: 18px; font-weight: 700; margin-bottom: 3px; }
+  .strategy-subtitle { font-size: 12px; color: var(--text-muted); }
+  .strategy-desc { font-size: 13px; color: var(--text-muted); line-height: 1.7; }
+  .strategy-desc strong { color: var(--text); }
+
+  .tiers {
+    display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap;
+  }
+  .tier {
+    padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;
+  }
+  .tier-aplus { background: var(--badge-aplus); color: var(--badge-aplus-text); }
+  .tier-monitor { background: var(--badge-monitor); color: var(--badge-monitor-text); }
+  .tier-skip { background: var(--badge-skip); color: var(--badge-skip-text); }
+
+  .timeline {
+    display: flex; gap: 0; flex-wrap: wrap; margin-top: 14px;
+  }
+  .tl-item {
+    display: flex; align-items: center; gap: 6px; font-size: 12px;
+    color: var(--text-muted);
+  }
+  .tl-item .tl-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent-blue); flex-shrink: 0;
+  }
+  .tl-arrow { color: var(--border); font-size: 18px; padding: 0 4px; }
+  .tl-item strong { color: var(--text); }
+
+  /* ── Section headers ── */
+  .section {
+    margin-bottom: 28px;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-header h2 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .section-header .section-icon { font-size: 15px; }
+  .section-note {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-left: auto;
+  }
+
+  /* ── Config rows ── */
+  .config-grid {
+    display: grid;
+    gap: 12px;
+  }
+  .config-row {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    align-items: center;
+    transition: border-color 0.15s;
+  }
+  .config-row:hover { border-color: #444d56; }
+  .config-row.manual-only {
+    border-left: 3px solid var(--accent-amber);
+    opacity: 0.85;
+  }
+  .config-label {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .config-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+  .config-desc .example {
+    color: var(--accent-cyan);
+    font-family: monospace;
+    font-size: 11px;
+  }
+
+  /* ── Inputs ── */
+  .input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  input[type="number"], input[type="text"] {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    width: 90px;
+    text-align: right;
+    transition: border-color 0.15s;
+  }
+  input[type="number"]:focus, input[type="text"]:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+  }
+  .input-unit {
+    font-size: 12px;
+    color: var(--text-muted);
+    min-width: 28px;
+  }
+  select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  select:focus { outline: none; border-color: var(--accent-blue); }
+
+  /* ── Range slider ── */
+  .slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 180px;
+  }
+  input[type="range"] {
+    flex: 1;
+    accent-color: var(--accent-blue);
+    cursor: pointer;
+  }
+  .slider-val {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent-cyan);
+    min-width: 36px;
+    text-align: right;
+    font-family: monospace;
+  }
+
+  /* ── Condition scoring rows ── */
+  .condition-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 10px;
+  }
+  .condition-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+  }
+  .condition-header:hover { background: #1e2535; }
+  .condition-num {
+    width: 22px; height: 22px;
+    background: var(--accent-blue);
+    color: #000;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; flex-shrink: 0;
+  }
+  .condition-title { font-size: 13px; font-weight: 600; flex: 1; }
+  .condition-weight {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: monospace;
+  }
+  .condition-chevron { color: var(--text-muted); font-size: 12px; transition: transform 0.2s; }
+  .condition-header.open .condition-chevron { transform: rotate(90deg); }
+  .condition-body {
+    display: none;
+    padding: 14px 16px;
+  }
+  .condition-body.open { display: block; }
+
+  .threshold-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+  .threshold-table th {
+    text-align: left;
+    padding: 5px 8px;
+    color: var(--text-muted);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+  }
+  .threshold-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid #1e2535;
+  }
+  .threshold-table tr:last-child td { border-bottom: none; }
+  .threshold-table input[type="number"] {
+    width: 70px;
+    font-size: 12px;
+    padding: 4px 8px;
+  }
+  .score-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 11px;
+    font-family: monospace;
+    background: var(--surface2);
+    color: var(--accent-cyan);
+  }
+
+  /* ── Warning box ── */
+  .warning-box {
+    background: #1a140a;
+    border: 1px solid #5a3e10;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .warning-box .icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .warning-box p { font-size: 12px; color: var(--accent-amber); line-height: 1.6; }
+
+  /* ── Info box ── */
+  .info-box {
+    background: #0d1a2a;
+    border: 1px solid #1a3a5a;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .info-box .icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .info-box p { font-size: 12px; color: var(--accent-blue); line-height: 1.6; }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--accent-green);
+    color: #000;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.3s;
+    pointer-events: none;
+    z-index: 999;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  /* ── Risk dashboard ── */
+  .risk-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .risk-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+  }
+  .risk-card .rv { font-size: 22px; font-weight: 700; color: var(--accent-cyan); font-family: monospace; }
+  .risk-card .rl { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  /* ── YAML preview ── */
+  .yaml-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 24px;
+  }
+  .yaml-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+  .yaml-header span { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+  .copy-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+  }
+  .copy-btn:hover { color: var(--text); border-color: #555; }
+  pre#yaml-out {
+    padding: 16px;
+    font-size: 11px;
+    line-height: 1.7;
+    color: var(--text-muted);
+    overflow-x: auto;
+    white-space: pre;
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  pre#yaml-out .key { color: var(--accent-blue); }
+  pre#yaml-out .val { color: var(--accent-cyan); }
+  pre#yaml-out .comment { color: #555; }
+
+  /* ── Responsive ── */
+  @media (max-width: 700px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+    .main { padding: 18px; }
+    .risk-row { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <div class="header-logo">📡</div>
+    <div>
+      <div class="header h1" style="font-size:17px;font-weight:600">Trading Scanner — Agent Configurator</div>
+      <div class="header subtitle" style="font-size:12px;color:var(--text-muted)">Configure scoring thresholds · Risk parameters · Strategy settings</div>
+    </div>
+  </div>
+  <button class="save-btn" onclick="saveConfig()" id="save-btn">
+    💾 Save config.yaml
+  </button>
+</div>
+
+<!-- Layout -->
+<div class="layout">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="nav-section-label">Agents</div>
+    <div class="nav-item active" onclick="showPage('bagholder')" id="nav-bagholder">
+      <span class="icon">📉</span>
+      <span class="label">Bagholder</span>
+      <span class="badge badge-active">Active</span>
+    </div>
+    <div class="nav-item" onclick="showPage('orf')" id="nav-orf">
+      <span class="icon">📊</span>
+      <span class="label">ORF Scanner</span>
+      <span class="badge badge-active">Active</span>
+    </div>
+    <div class="nav-item" onclick="showPage('earnings')" id="nav-earnings">
+      <span class="icon">💰</span>
+      <span class="label">Earnings Fade</span>
+      <span class="badge badge-planned">Planned</span>
+    </div>
+
+    <div class="nav-section-label">Global</div>
+    <div class="nav-item" onclick="showPage('risk')" id="nav-risk">
+      <span class="icon">🛡️</span>
+      <span class="label">Risk & Capital</span>
+    </div>
+    <div class="nav-item" onclick="showPage('preview')" id="nav-preview">
+      <span class="icon">📄</span>
+      <span class="label">YAML Preview</span>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+
+    <!-- ══════════════════ BAGHOLDER PAGE ══════════════════ -->
+    <div class="page active" id="page-bagholder">
+
+      <div class="strategy-hero">
+        <div class="hero-top">
+          <div class="strategy-icon">📉</div>
+          <div>
+            <div class="strategy-title">Bagholder Exit Liquidity Pattern</div>
+            <div class="strategy-subtitle">Pre-market gap fade · Short-side · Alert-only</div>
+          </div>
+        </div>
+        <div class="strategy-desc">
+          Stocks that have been in <strong>prolonged decline (6–12 months, 50%+ drawdown)</strong> create trapped holders.
+          When these stocks suddenly gap up <strong>30%+</strong> in pre-market on no real fundamental catalyst
+          (just social media hype or vague news), the trapped holders sell aggressively at the open,
+          overwhelming speculative buyers. The stock fades back down within 60 minutes.
+          <br><br>
+          <strong>Entry:</strong> Short at or near 9:30 AM ET open &nbsp;·&nbsp;
+          <strong>Time stop:</strong> Close by 10:30 AM ET &nbsp;·&nbsp;
+          <strong>Hard skip:</strong> M&amp;A / FDA approval / real earnings beat → DO NOT TRADE regardless of score.
+        </div>
+        <div class="tiers">
+          <span class="tier tier-aplus">≥35/60 → A+ Setup</span>
+          <span class="tier tier-monitor">20–34 → Monitor</span>
+          <span class="tier tier-skip">&lt;20 → Skip</span>
+        </div>
+        <div class="timeline" style="margin-top:16px">
+          <div class="tl-item"><div class="tl-dot"></div><strong>6 AM ET</strong> — Pre-market scan starts</div>
+          <div class="tl-arrow">›</div>
+          <div class="tl-item"><div class="tl-dot"></div><strong>9:30 AM ET</strong> — Short at open</div>
+          <div class="tl-arrow">›</div>
+          <div class="tl-item"><div class="tl-dot"></div><strong>10:30 AM ET</strong> — Time stop</div>
+        </div>
+      </div>
+
+      <div class="warning-box">
+        <span class="icon">⚠️</span>
+        <p><strong>Condition 5 (Catalyst Check) is always manual.</strong> The scanner scores it 5/10 as a neutral placeholder. You must verify via Reddit/Stocktwits before taking any trade. If the catalyst is M&A, FDA approval, or an earnings beat — skip regardless of total score.</p>
+      </div>
+
+      <!-- Scoring Tiers -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-icon">🏆</span>
+          <h2>Scoring Tiers</h2>
+          <span class="section-note">Total score out of 60</span>
+        </div>
+        <div class="config-grid">
+          <div class="config-row">
+            <div>
+              <div class="config-label">A+ Setup — Minimum Score</div>
+              <div class="config-desc">Stocks at or above this score get full trade parameters and a Telegram alert. <span class="example">Currently: ≥35/60</span></div>
+            </div>
+            <div class="input-wrap">
+              <input type="number" id="bh_tier_aplus" value="35" min="20" max="55" step="1">
+              <span class="input-unit">/ 60</span>
+            </div>
+          </div>
+          <div class="config-row">
+            <div>
+              <div class="config-label">Monitor — Minimum Score</div>
+              <div class="config-desc">Stocks in this band are flagged to watch. No trade parameters sent. <span class="example">Currently: 20–34</span></div>
+            </div>
+            <div class="input-wrap">
+              <input type="number" id="bh_tier_monitor" value="20" min="5" max="40" step="1">
+              <span class="input-unit">/ 60</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Condition scoring -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-icon">⚡</span>
+          <h2>Scoring Conditions</h2>
+          <span class="section-note">Click a condition to edit thresholds</span>
+        </div>
+
+        <!-- C1 -->
+        <div class="condition-card">
+          <div class="condition-header" onclick="toggleCondition(this)">
+            <div class="condition-num">1</div>
+            <div class="condition-title">Prior Decline — 6-month performance</div>
+            <div class="condition-weight">max 10 pts</div>
+            <div class="condition-chevron">›</div>
+          </div>
+          <div class="condition-body">
+            <p class="config-desc" style="margin-bottom:12px">Sweet spot: 60–80% decline over 6–12 months. Stronger decline = more trapped holders = better fade.</p>
+            <table class="threshold-table">
+              <tr><th>Decline ≥</th><th>Score</th><th>Edit threshold</th></tr>
+              <tr><td>80%</td><td><span class="score-badge">10</span></td><td><input type="number" id="bh_c1_t1" value="80" min="0" max="100">%</td></tr>
+              <tr><td>60%</td><td><span class="score-badge">9</span></td><td><input type="number" id="bh_c1_t2" value="60" min="0" max="100">%</td></tr>
+              <tr><td>50%</td><td><span class="score-badge">7</span></td><td><input type="number" id="bh_c1_t3" value="50" min="0" max="100">%</td></tr>
+              <tr><td>40%</td><td><span class="score-badge">4</span></td><td><input type="number" id="bh_c1_t4" value="40" min="0" max="100">%</td></tr>
+              <tr><td>30%</td><td><span class="score-badge">2</span></td><td><input type="number" id="bh_c1_t5" value="30" min="0" max="100">%</td></tr>
+              <tr><td>&lt; 30%</td><td><span class="score-badge">0</span></td><td style="color:var(--text-muted)">—</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <!-- C2 -->
+        <div class="condition-card">
+          <div class="condition-header" onclick="toggleCondition(this)">
+            <div class="condition-num">2</div>
+            <div class="condition-title">Price &amp; Market Cap — retail-dominated profile</div>
+            <div class="condition-weight">max 10 pts</div>
+            <div class="condition-chevron">›</div>
+          </div>
+          <div class="condition-body">
+            <p class="config-desc" style="margin-bottom:12px">Lower price and smaller market cap = more retail trading = more predictable panic selling. Score splits 5 pts each between price and market cap.</p>
+            <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;font-weight:600">PRICE THRESHOLDS (5 pts)</p>
+            <table class="threshold-table">
+              <tr><th>Price &lt;</th><th>Score</th><th>Edit threshold</th></tr>
+              <tr><td>$1</td><td><span class="score-badge">5</span></td><td>$<input type="number" id="bh_c2_p1" value="1" min="0" max="50" step="0.5"></td></tr>
+              <tr><td>$3</td><td><span class="score-badge">4</span></td><td>$<input type="number" id="bh_c2_p2" value="3" min="0" max="50" step="0.5"></td></tr>
+              <tr><td>$5</td><td><span class="score-badge">3</span></td><td>$<input type="number" id="bh_c2_p3" value="5" min="0" max="50" step="0.5"></td></tr>
+              <tr><td>$10</td><td><span class="score-badge">2</span></td><td>$<input type="number" id="bh_c2_p4" value="10" min="0" max="50" step="0.5"></td></tr>
+            </table>
+            <p style="font-size:11px;color:var(--text-muted);margin:12px 0 8px;font-weight:600">MARKET CAP THRESHOLDS (5 pts)</p>
+            <table class="threshold-table">
+              <tr><th>Mkt Cap &lt;</th><th>Score</th><th>Edit threshold</th></tr>
+              <tr><td>$50M</td><td><span class="score-badge">5</span></td><td>$<input type="number" id="bh_c2_m1" value="50" min="0" max="5000">M</td></tr>
+              <tr><td>$200M</td><td><span class="score-badge">4</span></td><td>$<input type="number" id="bh_c2_m2" value="200" min="0" max="5000">M</td></tr>
+              <tr><td>$500M</td><td><span class="score-badge">3</span></td><td>$<input type="number" id="bh_c2_m3" value="500" min="0" max="5000">M</td></tr>
+              <tr><td>$1B</td><td><span class="score-badge">2</span></td><td>$<input type="number" id="bh_c2_m4" value="1000" min="0" max="5000">M</td></tr>
+              <tr><td>$2B</td><td><span class="score-badge">1</span></td><td>$<input type="number" id="bh_c2_m5" value="2000" min="0" max="5000">M</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <!-- C3 -->
+        <div class="condition-card">
+          <div class="condition-header" onclick="toggleCondition(this)">
+            <div class="condition-num">3</div>
+            <div class="condition-title">Short Interest — % of float</div>
+            <div class="condition-weight">max 10 pts</div>
+            <div class="condition-chevron">›</div>
+          </div>
+          <div class="condition-body">
+            <p class="config-desc" style="margin-bottom:12px">High short interest confirms widespread bearish conviction. These shorts will cover into the gap, creating a ceiling and then accelerating the fade.</p>
+            <table class="threshold-table">
+              <tr><th>Short Float ≥</th><th>Score</th><th>Edit threshold</th></tr>
+              <tr><td>30%</td><td><span class="score-badge">10</span></td><td><input type="number" id="bh_c3_t1" value="30" min="0" max="100">%</td></tr>
+              <tr><td>20%</td><td><span class="score-badge">8</span></td><td><input type="number" id="bh_c3_t2" value="20" min="0" max="100">%</td></tr>
+              <tr><td>15%</td><td><span class="score-badge">7</span></td><td><input type="number" id="bh_c3_t3" value="15" min="0" max="100">%</td></tr>
+              <tr><td>10%</td><td><span class="score-badge">6</span></td><td><input type="number" id="bh_c3_t4" value="10" min="0" max="100">%</td></tr>
+              <tr><td>5%</td><td><span class="score-badge">3</span></td><td><input type="number" id="bh_c3_t5" value="5" min="0" max="100">%</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <!-- C4 -->
+        <div class="condition-card">
+          <div class="condition-header" onclick="toggleCondition(this)">
+            <div class="condition-num">4</div>
+            <div class="condition-title">Pre-market Spike — gap % from prior close</div>
+            <div class="condition-weight">max 10 pts</div>
+            <div class="condition-chevron">›</div>
+          </div>
+          <div class="condition-body">
+            <p class="config-desc" style="margin-bottom:12px">Optimal 50–100%+. A sudden, large spike means more trapped speculative buyers at stretched prices, amplifying the fade. Below 20% is usually not worth trading.</p>
+            <table class="threshold-table">
+              <tr><th>Gap % ≥</th><th>Score</th><th>Edit threshold</th></tr>
+              <tr><td>100%</td><td><span class="score-badge">10</span></td><td><input type="number" id="bh_c4_t1" value="100" min="0" max="500">%</td></tr>
+              <tr><td>75%</td><td><span class="score-badge">9</span></td><td><input type="number" id="bh_c4_t2" value="75" min="0" max="500">%</td></tr>
+              <tr><td>50%</td><td><span class="score-badge">8</span></td><td><input type="number" id="bh_c4_t3" value="50" min="0" max="500">%</td></tr>
+              <tr><td>40%</td><td><span class="score-badge">7</span></td><td><input type="number" id="bh_c4_t4" value="40" min="0" max="500">%</td></tr>
+              <tr><td>30%</td><td><span class="score-badge">6</span></td><td><input type="number" id="bh_c4_t5" value="30" min="0" max="500">%</td></tr>
+              <tr><td>20%</td><td><span class="score-badge">3</span></td><td><input type="number" id="bh_c4_t6" value="20" min="0" max="500">%</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <!-- C5 -->
+        <div class="condition-card">
+          <div class="condition-header" onclick="toggleCondition(this)">
+            <div class="condition-num" style="background:var(--accent-amber)">5</div>
+            <div class="condition-title">Catalyst Check — <em>always manual</em></div>
+            <div class="condition-weight">fixed 5 pts</div>
+            <div class="condition-chevron">›</div>
+          </div>
+          <div class="condition-body">
+            <div class="warning-box" style="margin:0">
+              <span class="icon">⚠️</span>
+              <p>This condition <strong>cannot be automated</strong>. The scanner always assigns a neutral 5/10. You must manually check Reddit/Stocktwits/news before trading. If the catalyst is M&A, FDA approval, or real earnings beat — skip regardless of total score.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- C6 -->
+        <div class="condition-card">
+          <div class="condition-header" onclick="toggleCondition(this)">
+            <div class="condition-num">6</div>
+            <div class="condition-title">Pre-market Volume — vs average daily volume</div>
+            <div class="condition-weight">max 10 pts</div>
+            <div class="condition-chevron">›</div>
+          </div>
+          <div class="condition-body">
+            <p class="config-desc" style="margin-bottom:12px">Confirms retail FOMO surge. Target ≥5× ADV. 20×+ is extreme and signals maximum panic buying = best fade setups.</p>
+            <table class="threshold-table">
+              <tr><th>Volume / ADV ≥</th><th>Score</th><th>Edit threshold</th></tr>
+              <tr><td>20×</td><td><span class="score-badge">10</span></td><td><input type="number" id="bh_c6_t1" value="20" min="1" max="100">×</td></tr>
+              <tr><td>15×</td><td><span class="score-badge">9</span></td><td><input type="number" id="bh_c6_t2" value="15" min="1" max="100">×</td></tr>
+              <tr><td>10×</td><td><span class="score-badge">8</span></td><td><input type="number" id="bh_c6_t3" value="10" min="1" max="100">×</td></tr>
+              <tr><td>7×</td><td><span class="score-badge">7</span></td><td><input type="number" id="bh_c6_t4" value="7" min="1" max="100">×</td></tr>
+              <tr><td>5×</td><td><span class="score-badge">6</span></td><td><input type="number" id="bh_c6_t5" value="5" min="1" max="100">×</td></tr>
+              <tr><td>3×</td><td><span class="score-badge">4</span></td><td><input type="number" id="bh_c6_t6" value="3" min="1" max="100">×</td></tr>
+              <tr><td>2×</td><td><span class="score-badge">2</span></td><td><input type="number" id="bh_c6_t7" value="2" min="1" max="100">×</td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Watchlist filters -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-icon">📋</span>
+          <h2>Watchlist Filters (Finviz Screener)</h2>
+          <span class="section-note">Used to build weekly candidate list</span>
+        </div>
+        <div class="config-grid">
+          <div class="config-row">
+            <div>
+              <div class="config-label">Max Stock Price</div>
+              <div class="config-desc">Only include stocks below this price in the watchlist. <span class="example">Lower price = more retail-dominated</span></div>
+            </div>
+            <div class="input-wrap">
+              $<input type="number" id="bh_max_price" value="10" min="1" max="100" step="1">
+            </div>
+          </div>
+          <div class="config-row">
+            <div>
+              <div class="config-label">Min Short Interest</div>
+              <div class="config-desc">Only include stocks with at least this short float %. <span class="example">10% minimum recommended</span></div>
+            </div>
+            <div class="input-wrap">
+              <input type="number" id="bh_min_short" value="10" min="0" max="80" step="1">
+              <span class="input-unit">%</span>
+            </div>
+          </div>
+          <div class="config-row">
+            <div>
+              <div class="config-label">Max 6-Month Performance</div>
+              <div class="config-desc">Only include stocks that have declined by at least this % over 6 months. Enter as negative. <span class="example">e.g. -30 means ≥30% decline</span></div>
+            </div>
+            <div class="input-wrap">
+              <input type="number" id="bh_max_perf" value="-30" min="-100" max="0" step="5">
+              <span class="input-unit">%</span>
+            </div>
+          </div>
+          <div class="config-row">
+            <div>
+              <div class="config-label">Min Average Daily Volume</div>
+              <div class="config-desc">Ignore micro-cap illiquid stocks below this average daily volume. <span class="example">100,000 recommended minimum</span></div>
+            </div>
+            <div class="input-wrap">
+              <input type="number" id="bh_min_vol" value="100000" min="10000" max="1000000" step="10000">
+            </div>
+          </div>
+          <div class="config-row">
+            <div>
+              <div class="config-label">Watchlist Max Size</div>
+              <div class="config-desc">Maximum number of stocks to track in the watchlist. <span class="example">80 is a good balance of coverage vs. noise</span></div>
+            </div>
+            <div class="input-wrap">
+              <input type="number" id="bh_max_stocks" value="80" min="10" max="300" step="10">
+            </div>
+          </div>
+          <div class="config-row">
+            <div>
+              <div class="config-label">Watchlist Refresh Interval</div>
+              <div class="config-desc">Refresh the watchlist if it is older than this many days. <span class="example">7 days (weekly) is the default</span></div>
+            </div>
+            <div class="input-wrap">
+              <input type="number" id="bh_stale_days" value="7" min="1" max="30" step="1">
+              <span class="input-unit">days</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /bagholder -->
+
+    <!-- ══════════════════ ORF PAGE ══════════════════ -->
+    <div class="page" id="page-orf">
+
+      <div class="strategy-hero">
+        <div class="hero-top">
+          <div class="strategy-icon">📊</div>
+          <div>
+            <div class="strategy-title">Opening Range Fade (ORF)</div>
+            <div class="strategy-subtitle">Opening range breakdown · Short-side · Alert-only</div>
+          </div>
+        </div>
+        <div class="strategy-desc">
+          Stocks that <strong>spike above their 9:30–9:45 AM ET opening range high</strong>,
+          then break back below it — a high-probability short setup. Trapped buyers from the initial spike
+          are forced to sell when the range breaks, accelerating the move down.
+          <br><br>
+          <strong>Entry:</strong> Short when price closes back below OR high &nbsp;·&nbsp;
+          <strong>Stop:</strong> 3% above OR high &nbsp;·&nbsp;
+          <strong>Target 1:</strong> OR low &nbsp;·&nbsp;
+          <strong>Target 2:</strong> Prior day close &nbsp;·&nbsp;
+          <strong>Time stop:</strong> 11:00 AM ET.
+        </div>
+        <div class="tiers">
+          <span class="tier tier-aplus">≥35/60 → A+ Setup</span>
+          <span class="tier tier-monitor">20–34 → Monitor</span>
+          <span class="tier tier-skip">&lt;20 → Skip</span>
+        </div>
+        <div class="timeline" style="margin-top:16px">
+          <div class="tl-item"><div class="tl-dot"></div><strong>9:45 AM ET</strong> — Scan OR movers</div>
+          <div class="tl-arrow">›</div>
+          <div class="tl-item"><div class="tl-dot"></div><strong>10:00–10:30 AM</strong> — Monitor breakdown</div>
+          <div class="tl-arrow">›</div>
+          <div class="tl-item"><div class="tl-dot"></div><strong>11:00 AM ET</strong> — Time stop</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <span class="section-icon">🏆</span>
+          <h2>Scoring Tiers</h2>
+          <span class="section-note">Total score out of 60</span>
+        </div>
+        <div class="config-grid">
+          <div class="config-row">
+            <div>
+              <div class="config-label">A+ Setup — Minimum Score</div>
+              <div class="config-desc">Stocks at or above this score get full trade parameters and alert.</div>
+            </div>
+            <div class="input-wrap">
+              <input type="number" id="orf_tier_aplus" value="35" min="20" max="55">
+              <span class="input-unit">/ 60</span>
+            </div>
+          </div>
+          <div class="config-row">
+            <div>
+              <div class="config-label">Monitor — Minimum Score</div>
+              <div class="config-desc">Watch-only alert, no trade params.</div>
+            </div>
+            <div class="input-wrap">
+              <input type="number" id="orf_tier_monitor" value="20" min="5" max="40">
+              <span class="input-unit">/ 60</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <span class="section-icon">⚡</span>
+          <h2>Scoring Conditions</h2>
+          <span class="section-note">Click a condition to edit</span>
+        </div>
+
+        <!-- ORF C1 -->
+        <div class="condition-card">
+          <div class="condition-header" onclick="toggleCondition(this)">
+            <div class="condition-num" style="background:var(--accent-cyan);color:#000">1</div>
+            <div class="condition-title">Prior Trend — fixed neutral (no watchlist cross-ref)</div>
+            <div class="condition-weight">fixed 5 pts</div>
+            <div class="condition-chevron">›</div>
+          </div>
+          <div class="condition-body">
+            <div class="info-box" style="margin:0">
+              <span class="icon">ℹ️</span>
+              <p>The ORF scanner runs without a watchlist, so prior trend is not available at scan time. It's scored 5/10 (neutral) by default. You can cross-reference with the Bagholder watchlist manually for bonus conviction.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ORF C2 -->
+        <div class="condition-card">
+          <div class="condition-header" onclick="toggleCondition(this)">
+            <div class="condition-num">2</div>
+            <div class="condition-title">Opening Range Size — range as % of price</div>
+            <div class="condition-weight">max 10 pts</div>
+            <div class="condition-chevron">›</div>
+          </div>
+          <div class="condition-body">
+            <p class="config-desc" style="margin-bottom:12px">A larger opening range means more buyers trapped at higher prices. When the range breaks, there's more forced selling.</p>
+            <table class="threshold-table">
+              <tr><th>OR size ≥</th><th>Score</th><th>Edit threshold</th></tr>
+              <tr><td>10%</td><td><span class="score-badge">10</span></td><td><input type="number" id="orf_c2_t1" value="10" min="0" max="50">%</td></tr>
+              <tr><td>7%</td><td><span class="score-badge">8</span></td><td><input type="number" id="orf_c2_t2" value="7" min="0" max="50">%</td></tr>
+              <tr><td>5%</td><td><span class="score-badge">7</span></td><td><input type="number" id="orf_c2_t3" value="5" min="0" max="50">%</td></tr>
+              <tr><td>3%</td><td><span class="score-badge">5</span></td><td><input type="number" id="orf_c2_t4" value="3" min="0" max="50">%</td></tr>
+              <tr><td>2%</td><td><span class="score-badge">3</span></td><td><input type="number" id="orf_c2_t5" value="2" min="0" max="50">%</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <!-- ORF C3 -->
+        <div class="condition-card">
+          <div class="condition-header" onclick="toggleCondition(this)">
+            <div class="condition-num">3</div>
+            <div class="condition-title">Gap Direction — gap % from prior close to open</div>
+            <div class="condition-weight">max 10 pts</div>
+            <div class="condition-chevron">›</div>
+          </div>
+          <div class="condition-body">
+            <p class="config-desc" style="margin-bottom:12px">A bigger gap up means more buyers are already trapped at elevated prices before the opening range even forms. Larger gap = stronger fade potential.</p>
+            <table class="threshold-table">
+              <tr><th>Gap % ≥</th><th>Score</th><th>Edit threshold</th></tr>
+              <tr><td>30%</td><td><span class="score-badge">10</span></td><td><input type="number" id="orf_c3_t1" value="30" min="0" max="200">%</td></tr>
+              <tr><td>20%</td><td><span class="score-badge">9</span></td><td><input type="number" id="orf_c3_t2" value="20" min="0" max="200">%</td></tr>
+              <tr><td>10%</td><td><span class="score-badge">7</span></td><td><input type="number" id="orf_c3_t3" value="10" min="0" max="200">%</td></tr>
+              <tr><td>5%</td><td><span class="score-badge">5</span></td><td><input type="number" id="orf_c3_t4" value="5" min="0" max="200">%</td></tr>
+              <tr><td>0%</td><td><span class="score-badge">3</span></td><td><input type="number" id="orf_c3_t5" value="0" min="-50" max="200">%</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <!-- ORF C4 -->
+        <div class="condition-card">
+          <div class="condition-header" onclick="toggleCondition(this)">
+            <div class="condition-num">4</div>
+            <div class="condition-title">OR Volume — volume in first 15 min vs ADV</div>
+            <div class="condition-weight">max 10 pts</div>
+            <div class="condition-chevron">›</div>
+          </div>
+          <div class="condition-body">
+            <p class="config-desc" style="margin-bottom:12px">By 9:45 AM, you'd normally expect ~4% of daily volume. If the OR captures 20%+ of ADV, it's an extreme spike confirming trapped buyers. Thresholds are expressed as fraction of ADV.</p>
+            <table class="threshold-table">
+              <tr><th>First-15min vol ≥</th><th>Score</th><th>Edit threshold</th></tr>
+              <tr><td>30% of ADV</td><td><span class="score-badge">10</span></td><td><input type="number" id="orf_c4_t1" value="30" min="1" max="100">% ADV</td></tr>
+              <tr><td>20% of ADV</td><td><span class="score-badge">8</span></td><td><input type="number" id="orf_c4_t2" value="20" min="1" max="100">% ADV</td></tr>
+              <tr><td>10% of ADV</td><td><span class="score-badge">6</span></td><td><input type="number" id="orf_c4_t3" value="10" min="1" max="100">% ADV</td></tr>
+              <tr><td>5% of ADV</td><td><span class="score-badge">4</span></td><td><input type="number" id="orf_c4_t4" value="5" min="1" max="100">% ADV</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <!-- ORF C5 -->
+        <div class="condition-card">
+          <div class="condition-header" onclick="toggleCondition(this)">
+            <div class="condition-num" style="background:var(--accent-amber)">5</div>
+            <div class="condition-title">Catalyst Check — <em>always manual</em></div>
+            <div class="condition-weight">fixed 5 pts</div>
+            <div class="condition-chevron">›</div>
+          </div>
+          <div class="condition-body">
+            <div class="warning-box" style="margin:0">
+              <span class="icon">⚠️</span>
+              <p>Same rule as Bagholder. If M&A, FDA approval, or real earnings beat is the catalyst — <strong>do not trade</strong>. Score is always 5/10 as a placeholder until you verify manually.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ORF C6 -->
+        <div class="condition-card">
+          <div class="condition-header" onclick="toggleCondition(this)">
+            <div class="condition-num">6</div>
+            <div class="condition-title">Rejection Quality — how cleanly price rejected OR high</div>
+            <div class="condition-weight">max 10 pts</div>
+            <div class="condition-chevron">›</div>
+          </div>
+          <div class="condition-body">
+            <p class="config-desc" style="margin-bottom:12px">Scored at monitor phase (not at scan time). A clean, sharp rejection with a long upper wick that immediately reverses scores highest. A slow drift below scores lower.</p>
+            <table class="threshold-table">
+              <tr><th>Rejection type</th><th>Score</th></tr>
+              <tr><td>Sharp spike and immediate reversal below OR high</td><td><span class="score-badge">10</span></td></tr>
+              <tr><td>Clean break below OR high with momentum</td><td><span class="score-badge">7</span></td></tr>
+              <tr><td>Gradual drift below OR high</td><td><span class="score-badge">4</span></td></tr>
+              <tr><td>Price hovering at OR high (ambiguous)</td><td><span class="score-badge">2</span></td></tr>
+            </table>
+            <div class="info-box" style="margin-top:10px">
+              <span class="icon">ℹ️</span>
+              <p>Rejection quality is currently approximated automatically by measuring how quickly price drops below OR high after the breakdown trigger. You can override via the Telegram alert reply.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ORF min move -->
+        <div class="section" style="margin-top:20px">
+          <div class="section-header">
+            <span class="section-icon">🔍</span>
+            <h2>Scan Filters</h2>
+          </div>
+          <div class="config-grid">
+            <div class="config-row">
+              <div>
+                <div class="config-label">Minimum Move from Open</div>
+                <div class="config-desc">Only track stocks that moved at least this % from their open price in the first 15 minutes. <span class="example">2% default filters out noise</span></div>
+              </div>
+              <div class="input-wrap">
+                <input type="number" id="orf_min_move" value="2" min="0.5" max="20" step="0.5">
+                <span class="input-unit">%</span>
+              </div>
+            </div>
+            <div class="config-row">
+              <div>
+                <div class="config-label">Stop Loss</div>
+                <div class="config-desc">Stop loss placed this % above the OR high. Tighter than Bagholder because OR fades reverse quickly. <span class="example">3% default</span></div>
+              </div>
+              <div class="input-wrap">
+                <input type="number" id="orf_stop_pct" value="3" min="1" max="20" step="0.5">
+                <span class="input-unit">%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div><!-- /orf -->
+
+    <!-- ══════════════════ EARNINGS PAGE ══════════════════ -->
+    <div class="page" id="page-earnings">
+
+      <div class="strategy-hero" style="border-color:#1a3a5a">
+        <div class="hero-top">
+          <div class="strategy-icon">💰</div>
+          <div>
+            <div class="strategy-title">Earnings Fade Scanner</div>
+            <div class="strategy-subtitle" style="color:var(--accent-blue)">⚙️ Agent not yet built — configure in advance</div>
+          </div>
+        </div>
+        <div class="strategy-desc">
+          Stocks that beat earnings expectations but gap up on <strong>weak guidance, one-time items, or already-priced-in results</strong>
+          attract sellers immediately. The pattern: stock gaps up 5–20% pre-market, probes the highs in the first 30 minutes,
+          then fails and fades — often back to the prior close or below by 11 AM ET.
+          <br><br>
+          Unlike Bagholder (which needs prolonged decline), Earnings Fade works on <strong>any stock</strong> as long as
+          the "sell the news" dynamic is present. The earnings calendar is pulled fresh each day — no watchlist needed.
+          <br><br>
+          <strong>Entry:</strong> Short at 10:00 AM ET fade confirmation &nbsp;·&nbsp;
+          <strong>Stop:</strong> 5% above pre-market high &nbsp;·&nbsp;
+          <strong>Hard skip:</strong> Clean beat (EPS + revenue + raised guidance) → DO NOT TRADE.
+        </div>
+        <div class="tiers">
+          <span class="tier tier-aplus">≥35/60 → A+ Setup</span>
+          <span class="tier tier-monitor">20–34 → Monitor</span>
+          <span class="tier tier-skip">&lt;20 → Skip</span>
+        </div>
+        <div class="timeline" style="margin-top:16px">
+          <div class="tl-item"><div class="tl-dot" style="background:var(--accent-blue)"></div><strong>6–9 AM ET</strong> — Pull earnings calendar, scan gappers</div>
+          <div class="tl-arrow">›</div>
+          <div class="tl-item"><div class="tl-dot" style="background:var(--accent-blue)"></div><strong>9:30 AM ET</strong> — Record open vs pre-mkt high</div>
+          <div class="tl-arrow">›</div>
+          <div class="tl-item"><div class="tl-dot" style="background:var(--accent-blue)"></div><strong>10:00 AM ET</strong> — Fade confirmation entry</div>
+          <div class="tl-arrow">›</div>
+          <div class="tl-item"><div class="tl-dot" style="background:var(--accent-blue)"></div><strong>11:00 AM ET</strong> — Time stop</div>
+        </div>
+      </div>
+
+      <div class="info-box">
+        <span class="icon">ℹ️</span>
+        <p>These settings are saved to config.yaml now and will be used when the Earnings Scanner agent is built. Configure in advance so the agent is ready to use on day one.</p>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <span class="section-icon">🏆</span>
+          <h2>Scoring Tiers</h2>
+        </div>
+        <div class="config-grid">
+          <div class="config-row">
+            <div><div class="config-label">A+ Setup — Minimum Score</div></div>
+            <div class="input-wrap">
+              <input type="number" id="ef_tier_aplus" value="35" min="20" max="55">
+              <span class="input-unit">/ 60</span>
+            </div>
+          </div>
+          <div class="config-row">
+            <div><div class="config-label">Monitor — Minimum Score</div></div>
+            <div class="input-wrap">
+              <input type="number" id="ef_tier_monitor" value="20" min="5" max="40">
+              <span class="input-unit">/ 60</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <span class="section-icon">⚡</span>
+          <h2>Scoring Conditions</h2>
+        </div>
+
+        <!-- EF C1 -->
+        <div class="condition-card">
+          <div class="condition-header" onclick="toggleCondition(this)">
+            <div class="condition-num" style="background:var(--accent-blue)">1</div>
+            <div class="condition-title">Pre-market Gap Size — % from prior close</div>
+            <div class="condition-weight">max 10 pts</div>
+            <div class="condition-chevron">›</div>
+          </div>
+          <div class="condition-body">
+            <p class="config-desc" style="margin-bottom:12px">Sweet spot is 5–20%. Too small (under 3%) = not enough sellers. Too large (over 25%) = overextended, harder to time the fade entry. The gap must be driven by earnings, not unrelated news.</p>
+            <table class="threshold-table">
+              <tr><th>Gap % ≥</th><th>Score</th><th>Edit threshold</th></tr>
+              <tr><td>20%</td><td><span class="score-badge">10</span></td><td><input type="number" id="ef_c1_t1" value="20" min="0" max="100">%</td></tr>
+              <tr><td>15%</td><td><span class="score-badge">8</span></td><td><input type="number" id="ef_c1_t2" value="15" min="0" max="100">%</td></tr>
+              <tr><td>10%</td><td><span class="score-badge">7</span></td><td><input type="number" id="ef_c1_t3" value="10" min="0" max="100">%</td></tr>
+              <tr><td>7%</td><td><span class="score-badge">5</span></td><td><input type="number" id="ef_c1_t4" value="7" min="0" max="100">%</td></tr>
+              <tr><td>5%</td><td><span class="score-badge">3</span></td><td><input type="number" id="ef_c1_t5" value="5" min="0" max="100">%</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <!-- EF C2 -->
+        <div class="condition-card">
+          <div class="condition-header" onclick="toggleCondition(this)">
+            <div class="condition-num" style="background:var(--accent-amber)">2</div>
+            <div class="condition-title">Earnings Quality — <em>always manual</em></div>
+            <div class="condition-weight">fixed 5 pts</div>
+            <div class="condition-chevron">›</div>
+          </div>
+          <div class="condition-body">
+            <div class="warning-box" style="margin:0">
+              <span class="icon">⚠️</span>
+              <p>
+                Always manual. The scanner scores 5/10 (neutral). You must verify the earnings report before trading.<br><br>
+                <strong>Scoring guide:</strong><br>
+                • Beat EPS but missed revenue = 9–10 (strong fade)<br>
+                • Beat on one-time items (tax gain, asset sale) = 10 (strongest fade)<br>
+                • Beat EPS + lowered guidance = 8 (good fade)<br>
+                • In-line / mixed = 5 (neutral)<br>
+                • Clean beat (EPS + revenue + raised guidance) = 0 → <strong>DO NOT TRADE</strong>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- EF C3 -->
+        <div class="condition-card">
+          <div class="condition-header" onclick="toggleCondition(this)">
+            <div class="condition-num">3</div>
+            <div class="condition-title">Pre-market Volume — vs average daily volume</div>
+            <div class="condition-weight">max 10 pts</div>
+            <div class="condition-chevron">›</div>
+          </div>
+          <div class="condition-body">
+            <p class="config-desc" style="margin-bottom:12px">High pre-market volume on an earnings reaction confirms retail over-reaction. Target ≥3× ADV in pre-market.</p>
+            <table class="threshold-table">
+              <tr><th>PM Volume / ADV ≥</th><th>Score</th><th>Edit threshold</th></tr>
+              <tr><td>10×</td><td><span class="score-badge">10</span></td><td><input type="number" id="ef_c3_t1" value="10" min="1" max="50">×</td></tr>
+              <tr><td>7×</td><td><span class="score-badge">8</span></td><td><input type="number" id="ef_c3_t2" value="7" min="1" max="50">×</td></tr>
+              <tr><td>5×</td><td><span class="score-badge">7</span></td><td><input type="number" id="ef_c3_t3" value="5" min="1" max="50">×</td></tr>
+              <tr><td>3×</td><td><span class="score-badge">5</span></td><td><input type="number" id="ef_c3_t4" value="3" min="1" max="50">×</td></tr>
+              <tr><td>2×</td><td><span class="score-badge">3</span></td><td><input type="number" id="ef_c3_t5" value="2" min="1" max="50">×</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <!-- EF C4 -->
+        <div class="condition-card">
+          <div class="condition-header" onclick="toggleCondition(this)">
+            <div class="condition-num">4</div>
+            <div class="condition-title">Stock Profile — price &amp; market cap range</div>
+            <div class="condition-weight">max 10 pts</div>
+            <div class="condition-chevron">›</div>
+          </div>
+          <div class="condition-body">
+            <p class="config-desc" style="margin-bottom:12px">Mid-cap stocks ($500M–$10B) in the $5–$50 price range fade more predictably. Micro-caps are too volatile. Large caps don't move enough.</p>
+            <div class="config-grid" style="margin-top:8px">
+              <div class="config-row">
+                <div><div class="config-label">Min Price</div><div class="config-desc">Below this = too volatile / meme-like</div></div>
+                <div class="input-wrap">$<input type="number" id="ef_min_price" value="5" min="0" max="100" step="1"></div>
+              </div>
+              <div class="config-row">
+                <div><div class="config-label">Max Price</div><div class="config-desc">Above this = institutional-dominated, slower fades</div></div>
+                <div class="input-wrap">$<input type="number" id="ef_max_price" value="50" min="0" max="500" step="5"></div>
+              </div>
+              <div class="config-row">
+                <div><div class="config-label">Min Market Cap</div></div>
+                <div class="input-wrap">$<input type="number" id="ef_min_mktcap" value="500" min="0" max="10000" step="100">M</div>
+              </div>
+              <div class="config-row">
+                <div><div class="config-label">Max Market Cap</div></div>
+                <div class="input-wrap">$<input type="number" id="ef_max_mktcap" value="10000" min="0" max="100000" step="500">M</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- EF C5 -->
+        <div class="condition-card">
+          <div class="condition-header" onclick="toggleCondition(this)">
+            <div class="condition-num">5</div>
+            <div class="condition-title">Prior Trend — near 52-week high (more sellers ready)</div>
+            <div class="condition-weight">max 10 pts</div>
+            <div class="condition-chevron">›</div>
+          </div>
+          <div class="condition-body">
+            <p class="config-desc" style="margin-bottom:12px">A stock already near its 52-week high has more shareholders sitting on gains who are ready to sell. Combined with an earnings gap-up, they have the perfect exit liquidity.</p>
+            <table class="threshold-table">
+              <tr><th>Within % of 52W high</th><th>Score</th><th>Edit threshold</th></tr>
+              <tr><td>5%</td><td><span class="score-badge">10</span></td><td><input type="number" id="ef_c5_t1" value="5" min="0" max="50">%</td></tr>
+              <tr><td>10%</td><td><span class="score-badge">8</span></td><td><input type="number" id="ef_c5_t2" value="10" min="0" max="50">%</td></tr>
+              <tr><td>20%</td><td><span class="score-badge">6</span></td><td><input type="number" id="ef_c5_t3" value="20" min="0" max="50">%</td></tr>
+              <tr><td>30%</td><td><span class="score-badge">3</span></td><td><input type="number" id="ef_c5_t4" value="30" min="0" max="50">%</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <!-- EF C6 -->
+        <div class="condition-card">
+          <div class="condition-header" onclick="toggleCondition(this)">
+            <div class="condition-num">6</div>
+            <div class="condition-title">Open Reaction — does it immediately give back gains?</div>
+            <div class="condition-weight">max 10 pts</div>
+            <div class="condition-chevron">›</div>
+          </div>
+          <div class="condition-body">
+            <p class="config-desc" style="margin-bottom:12px">Checked at the 10:00 AM monitor phase, not at scan time. If the stock opens and immediately begins fading below the pre-market price, sellers are in control from the start.</p>
+            <table class="threshold-table">
+              <tr><th>Open % vs PM High</th><th>Score</th><th>Edit threshold</th></tr>
+              <tr><td>Opens below PM high by 3%+</td><td><span class="score-badge">10</span></td><td><input type="number" id="ef_c6_t1" value="3" min="0" max="20">%</td></tr>
+              <tr><td>Opens below PM high by 1–3%</td><td><span class="score-badge">7</span></td><td><input type="number" id="ef_c6_t2" value="1" min="0" max="20">%</td></tr>
+              <tr><td>Opens at/near PM high</td><td><span class="score-badge">4</span></td><td style="color:var(--text-muted)">—</td></tr>
+              <tr><td>Opens above PM high (still surging)</td><td><span class="score-badge">1</span></td><td style="color:var(--text-muted)">—</td></tr>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- EF trade params -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-icon">📐</span>
+          <h2>Trade Parameters</h2>
+        </div>
+        <div class="config-grid">
+          <div class="config-row">
+            <div>
+              <div class="config-label">Minimum Gap to Scan</div>
+              <div class="config-desc">Only pull earnings stocks with at least this pre-market gap. Below 3% is usually not a tradeable earnings reaction. <span class="example">5% default</span></div>
+            </div>
+            <div class="input-wrap">
+              <input type="number" id="ef_min_gap" value="5" min="1" max="30" step="0.5">
+              <span class="input-unit">%</span>
+            </div>
+          </div>
+          <div class="config-row">
+            <div>
+              <div class="config-label">Stop Loss</div>
+              <div class="config-desc">Stop placed this % above the pre-market high. <span class="example">5% default — wider than ORF because earnings moves can spike unexpectedly</span></div>
+            </div>
+            <div class="input-wrap">
+              <input type="number" id="ef_stop_pct" value="5" min="1" max="20" step="0.5">
+              <span class="input-unit">%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /earnings -->
+
+    <!-- ══════════════════ RISK PAGE ══════════════════ -->
+    <div class="page" id="page-risk">
+
+      <div class="strategy-hero">
+        <div class="hero-top">
+          <div class="strategy-icon">🛡️</div>
+          <div>
+            <div class="strategy-title">Risk &amp; Capital Settings</div>
+            <div class="strategy-subtitle">Applied globally across all three agents</div>
+          </div>
+        </div>
+        <div class="strategy-desc">
+          These parameters control position sizing and daily loss limits for all agents.
+          The scanner <strong>never auto-executes trades</strong> — these values are used to compute
+          recommended position sizes in Telegram alerts. You always make the final decision.
+        </div>
+      </div>
+
+      <div id="risk-display" class="risk-row">
+        <div class="risk-card">
+          <div class="rv" id="rv-capital">$10,000</div>
+          <div class="rl">Total Capital</div>
+        </div>
+        <div class="risk-card">
+          <div class="rv" id="rv-risk">$100</div>
+          <div class="rl">Risk per Trade (1%)</div>
+        </div>
+        <div class="risk-card">
+          <div class="rv" id="rv-daily">$200</div>
+          <div class="rl">Max Daily Loss (2%)</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <span class="section-icon">💵</span>
+          <h2>Capital &amp; Risk Parameters</h2>
+        </div>
+        <div class="config-grid">
+          <div class="config-row">
+            <div>
+              <div class="config-label">Total Capital (USD)</div>
+              <div class="config-desc">Your total trading capital. Position sizes are calculated as a percentage of this. <span class="example">$10,000 starting capital</span></div>
+            </div>
+            <div class="input-wrap">
+              $<input type="number" id="capital" value="10000" min="100" max="10000000" step="100" oninput="updateRiskDisplay()">
+            </div>
+          </div>
+          <div class="config-row">
+            <div>
+              <div class="config-label">Risk per Trade</div>
+              <div class="config-desc">Maximum dollar amount to risk on any single trade. Position size = this ÷ stop distance. <span class="example">1% of capital = $100 on $10K account</span></div>
+            </div>
+            <div class="input-wrap">
+              <input type="number" id="risk_pct" value="1" min="0.1" max="5" step="0.1" oninput="updateRiskDisplay()">
+              <span class="input-unit">%</span>
+            </div>
+          </div>
+          <div class="config-row">
+            <div>
+              <div class="config-label">Max Daily Loss</div>
+              <div class="config-desc">Stop trading for the day once you've lost this % of capital. No more alerts sent after this threshold is hit. <span class="example">2% = $200 max loss per day</span></div>
+            </div>
+            <div class="input-wrap">
+              <input type="number" id="daily_loss_pct" value="2" min="0.5" max="10" step="0.5" oninput="updateRiskDisplay()">
+              <span class="input-unit">%</span>
+            </div>
+          </div>
+          <div class="config-row">
+            <div>
+              <div class="config-label">Bagholder Stop Loss</div>
+              <div class="config-desc">Stop placed this % above the pre-market high for Bagholder trades. <span class="example">10% default — wider because pre-market highs can be tested</span></div>
+            </div>
+            <div class="input-wrap">
+              <input type="number" id="bh_stop_pct" value="10" min="1" max="30" step="0.5">
+              <span class="input-unit">%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /risk -->
+
+    <!-- ══════════════════ YAML PREVIEW PAGE ══════════════════ -->
+    <div class="page" id="page-preview">
+
+      <div class="strategy-hero">
+        <div class="hero-top">
+          <div class="strategy-icon">📄</div>
+          <div>
+            <div class="strategy-title">config.yaml Preview</div>
+            <div class="strategy-subtitle">This is the file that will be written to disk when you click Save</div>
+          </div>
+        </div>
+        <div class="strategy-desc">
+          The scanner agents read this file at startup on every GitHub Actions run. Changes take effect on the next scheduled run after you click Save.
+          <br><br>
+          The file is saved as <strong>config.yaml</strong> in the root of your Trading Scanner folder.
+        </div>
+      </div>
+
+      <button onclick="renderYaml()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;margin-bottom:16px">🔄 Refresh Preview</button>
+
+      <div class="yaml-wrap">
+        <div class="yaml-header">
+          <span>config.yaml</span>
+          <button class="copy-btn" onclick="copyYaml()">📋 Copy</button>
+        </div>
+        <pre id="yaml-out">Click "Refresh Preview" to generate.</pre>
+      </div>
+    </div><!-- /preview -->
+
+  </div><!-- /main -->
+</div><!-- /layout -->
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Navigation ──
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+  if (name === 'preview') renderYaml();
+}
+
+// ── Condition accordion ──
+function toggleCondition(header) {
+  const body = header.nextElementSibling;
+  const isOpen = body.classList.contains('open');
+  header.classList.toggle('open', !isOpen);
+  body.classList.toggle('open', !isOpen);
+}
+
+// ── Risk display updater ──
+function updateRiskDisplay() {
+  const cap = parseFloat(document.getElementById('capital').value) || 10000;
+  const rPct = parseFloat(document.getElementById('risk_pct').value) || 1;
+  const dPct = parseFloat(document.getElementById('daily_loss_pct').value) || 2;
+  document.getElementById('rv-capital').textContent = '$' + cap.toLocaleString();
+  document.getElementById('rv-risk').textContent = '$' + (cap * rPct / 100).toFixed(0);
+  document.getElementById('rv-daily').textContent = '$' + (cap * dPct / 100).toFixed(0);
+}
+
+// ── Read all form values ──
+function getValues() {
+  const v = id => parseFloat(document.getElementById(id)?.value ?? 0);
+  const iv = id => parseInt(document.getElementById(id)?.value ?? 0);
+  return {
+    // Global risk
+    capital: v('capital'),
+    risk_pct: v('risk_pct') / 100,
+    daily_loss_pct: v('daily_loss_pct') / 100,
+    bh_stop_pct: v('bh_stop_pct') / 100,
+    // Bagholder tiers
+    bh_aplus: iv('bh_tier_aplus'),
+    bh_monitor: iv('bh_tier_monitor'),
+    // BH C1
+    bh_c1_t1: v('bh_c1_t1'), bh_c1_t2: v('bh_c1_t2'), bh_c1_t3: v('bh_c1_t3'),
+    bh_c1_t4: v('bh_c1_t4'), bh_c1_t5: v('bh_c1_t5'),
+    // BH C2 price
+    bh_c2_p1: v('bh_c2_p1'), bh_c2_p2: v('bh_c2_p2'),
+    bh_c2_p3: v('bh_c2_p3'), bh_c2_p4: v('bh_c2_p4'),
+    // BH C2 mktcap
+    bh_c2_m1: v('bh_c2_m1'), bh_c2_m2: v('bh_c2_m2'), bh_c2_m3: v('bh_c2_m3'),
+    bh_c2_m4: v('bh_c2_m4'), bh_c2_m5: v('bh_c2_m5'),
+    // BH C3
+    bh_c3_t1: v('bh_c3_t1'), bh_c3_t2: v('bh_c3_t2'), bh_c3_t3: v('bh_c3_t3'),
+    bh_c3_t4: v('bh_c3_t4'), bh_c3_t5: v('bh_c3_t5'),
+    // BH C4
+    bh_c4_t1: v('bh_c4_t1'), bh_c4_t2: v('bh_c4_t2'), bh_c4_t3: v('bh_c4_t3'),
+    bh_c4_t4: v('bh_c4_t4'), bh_c4_t5: v('bh_c4_t5'), bh_c4_t6: v('bh_c4_t6'),
+    // BH C6
+    bh_c6_t1: v('bh_c6_t1'), bh_c6_t2: v('bh_c6_t2'), bh_c6_t3: v('bh_c6_t3'),
+    bh_c6_t4: v('bh_c6_t4'), bh_c6_t5: v('bh_c6_t5'), bh_c6_t6: v('bh_c6_t6'),
+    bh_c6_t7: v('bh_c6_t7'),
+    // BH watchlist
+    bh_max_price: v('bh_max_price'), bh_min_short: v('bh_min_short'),
+    bh_max_perf: v('bh_max_perf'), bh_min_vol: iv('bh_min_vol'),
+    bh_max_stocks: iv('bh_max_stocks'), bh_stale_days: iv('bh_stale_days'),
+    // ORF tiers
+    orf_aplus: iv('orf_tier_aplus'), orf_monitor: iv('orf_tier_monitor'),
+    // ORF conditions
+    orf_c2_t1: v('orf_c2_t1'), orf_c2_t2: v('orf_c2_t2'), orf_c2_t3: v('orf_c2_t3'),
+    orf_c2_t4: v('orf_c2_t4'), orf_c2_t5: v('orf_c2_t5'),
+    orf_c3_t1: v('orf_c3_t1'), orf_c3_t2: v('orf_c3_t2'), orf_c3_t3: v('orf_c3_t3'),
+    orf_c3_t4: v('orf_c3_t4'), orf_c3_t5: v('orf_c3_t5'),
+    orf_c4_t1: v('orf_c4_t1'), orf_c4_t2: v('orf_c4_t2'),
+    orf_c4_t3: v('orf_c4_t3'), orf_c4_t4: v('orf_c4_t4'),
+    orf_min_move: v('orf_min_move'), orf_stop_pct: v('orf_stop_pct') / 100,
+    // Earnings tiers
+    ef_aplus: iv('ef_tier_aplus'), ef_monitor: iv('ef_tier_monitor'),
+    // EF C1
+    ef_c1_t1: v('ef_c1_t1'), ef_c1_t2: v('ef_c1_t2'), ef_c1_t3: v('ef_c1_t3'),
+    ef_c1_t4: v('ef_c1_t4'), ef_c1_t5: v('ef_c1_t5'),
+    // EF C3
+    ef_c3_t1: v('ef_c3_t1'), ef_c3_t2: v('ef_c3_t2'), ef_c3_t3: v('ef_c3_t3'),
+    ef_c3_t4: v('ef_c3_t4'), ef_c3_t5: v('ef_c3_t5'),
+    // EF C4 profile
+    ef_min_price: v('ef_min_price'), ef_max_price: v('ef_max_price'),
+    ef_min_mktcap: v('ef_min_mktcap'), ef_max_mktcap: v('ef_max_mktcap'),
+    // EF C5
+    ef_c5_t1: v('ef_c5_t1'), ef_c5_t2: v('ef_c5_t2'),
+    ef_c5_t3: v('ef_c5_t3'), ef_c5_t4: v('ef_c5_t4'),
+    // EF C6
+    ef_c6_t1: v('ef_c6_t1'), ef_c6_t2: v('ef_c6_t2'),
+    // EF trade params
+    ef_min_gap: v('ef_min_gap'), ef_stop_pct: v('ef_stop_pct') / 100,
+  };
+}
+
+// ── YAML generator ──
+function buildYaml(c) {
+  return `# Trading Scanner — Configuration
+# Auto-generated by configurator.html
+# Do NOT edit manually — use the configurator UI instead.
+
+# ════════════════════════════════════════════
+# GLOBAL — Capital & Risk
+# ════════════════════════════════════════════
+capital_usd: ${c.capital}
+risk_per_trade_pct: ${c.risk_pct.toFixed(4)}       # ${(c.risk_pct*100).toFixed(1)}% of capital = $${(c.capital*c.risk_pct).toFixed(0)} per trade
+max_daily_loss_pct: ${c.daily_loss_pct.toFixed(4)}       # ${(c.daily_loss_pct*100).toFixed(1)}% of capital = $${(c.capital*c.daily_loss_pct).toFixed(0)} max daily loss
+
+# ── Timing ──
+time_stop_et: "10:30 AM ET"
+time_stop_sgt: "10:30 PM SGT"
+market_open_et: "9:30 AM ET"
+market_open_sgt: "9:30 PM SGT"
+
+# ── Telegram ──
+telegram_enabled: true         # Set to false to disable alerts
+
+# ── Data Paths ──
+data_dir: scanner/data
+watchlist_file: scanner/data/watchlist.json
+latest_scan_file: scanner/data/latest_scan.json
+history_dir: scanner/data/history
+
+# ── Rate Limiting ──
+finviz_rate_min_s: 0.8
+finviz_rate_max_s: 1.5
+
+
+# ════════════════════════════════════════════
+# AGENT 1 — Bagholder Exit Liquidity Pattern
+# ════════════════════════════════════════════
+bagholder:
+
+  # ── Scoring Tiers ──
+  tier_a_plus_min: ${c.bh_aplus}            # Score ≥${c.bh_aplus}/60 → A+ setup
+  tier_monitor_min: ${c.bh_monitor}           # Score ${c.bh_monitor}–${c.bh_aplus-1}/60 → Monitor
+
+  # ── Trade Parameters ──
+  stop_loss_pct: ${c.bh_stop_pct.toFixed(4)}          # ${(c.bh_stop_pct*100).toFixed(1)}% above pre-market high
+
+  # ── Condition 1: Prior Decline (6m performance) ──
+  c1_decline_10: ${c.bh_c1_t1}             # ≥${c.bh_c1_t1}% decline → 10 pts
+  c1_decline_9:  ${c.bh_c1_t2}             # ≥${c.bh_c1_t2}% decline → 9 pts
+  c1_decline_7:  ${c.bh_c1_t3}             # ≥${c.bh_c1_t3}% decline → 7 pts
+  c1_decline_4:  ${c.bh_c1_t4}             # ≥${c.bh_c1_t4}% decline → 4 pts
+  c1_decline_2:  ${c.bh_c1_t5}             # ≥${c.bh_c1_t5}% decline → 2 pts
+
+  # ── Condition 2: Price & Market Cap ──
+  c2_price_5:    ${c.bh_c2_p1}              # Price <$${c.bh_c2_p1} → 5 pts
+  c2_price_4:    ${c.bh_c2_p2}              # Price <$${c.bh_c2_p2} → 4 pts
+  c2_price_3:    ${c.bh_c2_p3}              # Price <$${c.bh_c2_p3} → 3 pts
+  c2_price_2:    ${c.bh_c2_p4}             # Price <$${c.bh_c2_p4} → 2 pts
+  c2_mktcap_5:   ${c.bh_c2_m1}             # Mkt cap <$${c.bh_c2_m1}M → 5 pts
+  c2_mktcap_4:   ${c.bh_c2_m2}           # Mkt cap <$${c.bh_c2_m2}M → 4 pts
+  c2_mktcap_3:   ${c.bh_c2_m3}           # Mkt cap <$${c.bh_c2_m3}M → 3 pts
+  c2_mktcap_2:   ${c.bh_c2_m4}          # Mkt cap <$${c.bh_c2_m4}M → 2 pts
+  c2_mktcap_1:   ${c.bh_c2_m5}          # Mkt cap <$${c.bh_c2_m5}M → 1 pt
+
+  # ── Condition 3: Short Interest ──
+  c3_short_10:   ${c.bh_c3_t1}             # ≥${c.bh_c3_t1}% short float → 10 pts
+  c3_short_8:    ${c.bh_c3_t2}             # ≥${c.bh_c3_t2}% → 8 pts
+  c3_short_7:    ${c.bh_c3_t3}             # ≥${c.bh_c3_t3}% → 7 pts
+  c3_short_6:    ${c.bh_c3_t4}             # ≥${c.bh_c3_t4}% → 6 pts
+  c3_short_3:    ${c.bh_c3_t5}              # ≥${c.bh_c3_t5}% → 3 pts
+
+  # ── Condition 4: Pre-market Gap % ──
+  c4_gap_10:     ${c.bh_c4_t1}           # ≥${c.bh_c4_t1}% gap → 10 pts
+  c4_gap_9:      ${c.bh_c4_t2}            # ≥${c.bh_c4_t2}% → 9 pts
+  c4_gap_8:      ${c.bh_c4_t3}            # ≥${c.bh_c4_t3}% → 8 pts
+  c4_gap_7:      ${c.bh_c4_t4}            # ≥${c.bh_c4_t4}% → 7 pts
+  c4_gap_6:      ${c.bh_c4_t5}            # ≥${c.bh_c4_t5}% → 6 pts
+  c4_gap_3:      ${c.bh_c4_t6}            # ≥${c.bh_c4_t6}% → 3 pts
+
+  # ── Condition 5: Catalyst — always manual, fixed 5 pts ──
+
+  # ── Condition 6: Pre-market Volume vs ADV ──
+  c6_vol_10:     ${c.bh_c6_t1}            # ≥${c.bh_c6_t1}× ADV → 10 pts
+  c6_vol_9:      ${c.bh_c6_t2}            # ≥${c.bh_c6_t2}× → 9 pts
+  c6_vol_8:      ${c.bh_c6_t3}            # ≥${c.bh_c6_t3}× → 8 pts
+  c6_vol_7:      ${c.bh_c6_t4}              # ≥${c.bh_c6_t4}× → 7 pts
+  c6_vol_6:      ${c.bh_c6_t5}              # ≥${c.bh_c6_t5}× → 6 pts
+  c6_vol_4:      ${c.bh_c6_t6}              # ≥${c.bh_c6_t6}× → 4 pts
+  c6_vol_2:      ${c.bh_c6_t7}              # ≥${c.bh_c6_t7}× → 2 pts
+
+  # ── Watchlist Filters ──
+  watchlist_max_price: ${c.bh_max_price}
+  watchlist_min_short_float: ${c.bh_min_short}
+  watchlist_max_perf_6m: ${c.bh_max_perf}
+  watchlist_min_avg_vol: ${c.bh_min_vol}
+  watchlist_max_stocks: ${c.bh_max_stocks}
+  watchlist_stale_days: ${c.bh_stale_days}
+
+
+# ════════════════════════════════════════════
+# AGENT 2 — Opening Range Fade (ORF)
+# ════════════════════════════════════════════
+orf:
+
+  # ── Scoring Tiers ──
+  tier_a_plus_min: ${c.orf_aplus}
+  tier_monitor_min: ${c.orf_monitor}
+
+  # ── Trade Parameters ──
+  min_move_pct: ${c.orf_min_move}             # Min % move from open to qualify
+  stop_loss_pct: ${c.orf_stop_pct.toFixed(4)}          # ${(c.orf_stop_pct*100).toFixed(1)}% above OR high
+
+  # ── Condition 2: Opening Range Size ──
+  c2_or_size_10: ${c.orf_c2_t1}             # ≥${c.orf_c2_t1}% OR size → 10 pts
+  c2_or_size_8:  ${c.orf_c2_t2}              # ≥${c.orf_c2_t2}% → 8 pts
+  c2_or_size_7:  ${c.orf_c2_t3}              # ≥${c.orf_c2_t3}% → 7 pts
+  c2_or_size_5:  ${c.orf_c2_t4}              # ≥${c.orf_c2_t4}% → 5 pts
+  c2_or_size_3:  ${c.orf_c2_t5}              # ≥${c.orf_c2_t5}% → 3 pts
+
+  # ── Condition 3: Gap Direction ──
+  c3_gap_10:     ${c.orf_c3_t1}             # ≥${c.orf_c3_t1}% gap → 10 pts
+  c3_gap_9:      ${c.orf_c3_t2}             # ≥${c.orf_c3_t2}% → 9 pts
+  c3_gap_7:      ${c.orf_c3_t3}             # ≥${c.orf_c3_t3}% → 7 pts
+  c3_gap_5:      ${c.orf_c3_t4}              # ≥${c.orf_c3_t4}% → 5 pts
+  c3_gap_3:      ${c.orf_c3_t5}              # ≥${c.orf_c3_t5}% → 3 pts
+
+  # ── Condition 4: OR Volume vs ADV ──
+  c4_vol_pct_10: ${c.orf_c4_t1}            # ≥${c.orf_c4_t1}% of ADV in first 15min → 10 pts
+  c4_vol_pct_8:  ${c.orf_c4_t2}            # ≥${c.orf_c4_t2}% → 8 pts
+  c4_vol_pct_6:  ${c.orf_c4_t3}            # ≥${c.orf_c4_t3}% → 6 pts
+  c4_vol_pct_4:  ${c.orf_c4_t4}             # ≥${c.orf_c4_t4}% → 4 pts
+
+
+# ════════════════════════════════════════════
+# AGENT 3 — Earnings Fade Scanner (planned)
+# ════════════════════════════════════════════
+earnings_fade:
+
+  # ── Scoring Tiers ──
+  tier_a_plus_min: ${c.ef_aplus}
+  tier_monitor_min: ${c.ef_monitor}
+
+  # ── Trade Parameters ──
+  min_gap_pct: ${c.ef_min_gap}              # Min pre-market gap % to include
+  stop_loss_pct: ${c.ef_stop_pct.toFixed(4)}          # ${(c.ef_stop_pct*100).toFixed(1)}% above pre-market high
+
+  # ── Condition 1: Pre-market Gap Size ──
+  c1_gap_10:     ${c.ef_c1_t1}             # ≥${c.ef_c1_t1}% → 10 pts
+  c1_gap_8:      ${c.ef_c1_t2}             # ≥${c.ef_c1_t2}% → 8 pts
+  c1_gap_7:      ${c.ef_c1_t3}             # ≥${c.ef_c1_t3}% → 7 pts
+  c1_gap_5:      ${c.ef_c1_t4}              # ≥${c.ef_c1_t4}% → 5 pts
+  c1_gap_3:      ${c.ef_c1_t5}              # ≥${c.ef_c1_t5}% → 3 pts
+
+  # ── Condition 2: Earnings Quality — always manual, fixed 5 pts ──
+
+  # ── Condition 3: Pre-market Volume vs ADV ──
+  c3_vol_10:     ${c.ef_c3_t1}             # ≥${c.ef_c3_t1}× ADV → 10 pts
+  c3_vol_8:      ${c.ef_c3_t2}              # ≥${c.ef_c3_t2}× → 8 pts
+  c3_vol_7:      ${c.ef_c3_t3}              # ≥${c.ef_c3_t3}× → 7 pts
+  c3_vol_5:      ${c.ef_c3_t4}              # ≥${c.ef_c3_t4}× → 5 pts
+  c3_vol_3:      ${c.ef_c3_t5}              # ≥${c.ef_c3_t5}× → 3 pts
+
+  # ── Condition 4: Stock Profile ──
+  c4_min_price:  ${c.ef_min_price}              # Min stock price
+  c4_max_price:  ${c.ef_max_price}             # Max stock price
+  c4_min_mktcap: ${c.ef_min_mktcap}           # Min market cap ($M)
+  c4_max_mktcap: ${c.ef_max_mktcap}         # Max market cap ($M)
+
+  # ── Condition 5: Prior Trend — near 52W high ──
+  c5_near_high_10: ${c.ef_c5_t1}            # Within ${c.ef_c5_t1}% of 52W high → 10 pts
+  c5_near_high_8:  ${c.ef_c5_t2}           # Within ${c.ef_c5_t2}% → 8 pts
+  c5_near_high_6:  ${c.ef_c5_t3}           # Within ${c.ef_c5_t3}% → 6 pts
+  c5_near_high_3:  ${c.ef_c5_t4}           # Within ${c.ef_c5_t4}% → 3 pts
+
+  # ── Condition 6: Open Reaction ──
+  c6_below_pm_10:  ${c.ef_c6_t1}             # Opens ≥${c.ef_c6_t1}% below PM high → 10 pts
+  c6_below_pm_7:   ${c.ef_c6_t2}             # Opens ≥${c.ef_c6_t2}% below PM high → 7 pts
+
+# ── Strategy Notes (read-only) ──────────────────────────────────────────────
+# NEVER auto-execute trades. Alert only. User makes final decision.
+# Condition 5/Bagholder and Condition 2/Earnings are ALWAYS manual.
+# If catalyst is M&A / FDA approval / clean earnings beat → DO NOT TRADE.
+# All times shown in both ET and SGT.
+`;
+}
+
+function renderYaml() {
+  const c = getValues();
+  document.getElementById('yaml-out').textContent = buildYaml(c);
+}
+
+function copyYaml() {
+  const text = document.getElementById('yaml-out').textContent;
+  navigator.clipboard.writeText(text).then(() => showToast('📋 Copied to clipboard'));
+}
+
+// ── Save config.yaml ──
+async function saveConfig() {
+  const c = getValues();
+  const yaml = buildYaml(c);
+
+  // Use the File System Access API if available, otherwise fall back to download
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: 'config.yaml',
+        types: [{ description: 'YAML file', accept: { 'text/yaml': ['.yaml', '.yml'] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(yaml);
+      await writable.close();
+      showToast('✅ config.yaml saved!');
+      const btn = document.getElementById('save-btn');
+      btn.textContent = '✅ Saved!';
+      setTimeout(() => { btn.textContent = '💾 Save config.yaml'; }, 3000);
+      return;
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        // Fall through to download
+      } else {
+        return; // User cancelled
+      }
+    }
+  }
+
+  // Fallback: trigger download
+  const blob = new Blob([yaml], { type: 'text/yaml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'config.yaml';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('⬇️ config.yaml downloaded — replace the file in your Trading Scanner folder');
+}
+
+// ── Toast ──
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 4000);
+}
+
+// ── Init ──
+updateRiskDisplay();
+</script>
+</body>
+</html>

@@ -49,17 +49,44 @@ DATA_DIR = SCRIPT_DIR / "data"
 HISTORY_DIR = DATA_DIR / "history"
 WATCHLIST_FILE = DATA_DIR / "watchlist.json"
 LATEST_SCAN_FILE = DATA_DIR / "latest_scan.json"
+CONFIG_FILE = SCRIPT_DIR.parent / "config.yaml"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------------
-# Config / constants
+# Config loader
 # ---------------------------------------------------------------------------
-WATCHLIST_MAX_STOCKS = 80
-WATCHLIST_STALE_DAYS = 7
-FINVIZ_RATE_MIN = 0.8
-FINVIZ_RATE_MAX = 1.5
+
+def _load_config() -> dict:
+    """Load config.yaml. Falls back to built-in defaults if file is missing."""
+    if CONFIG_FILE.exists():
+        try:
+            import yaml
+            with open(CONFIG_FILE) as f:
+                return yaml.safe_load(f) or {}
+        except Exception as e:
+            print(f"  [!] Could not load config.yaml: {e} — using defaults")
+    return {}
+
+_CFG = _load_config()
+_BH = _CFG.get("bagholder", {})
+
+def _g(key, default):
+    """Get a top-level config value with fallback."""
+    return _CFG.get(key, default)
+
+def _b(key, default):
+    """Get a bagholder-section config value with fallback."""
+    return _BH.get(key, default)
+
+# ---------------------------------------------------------------------------
+# Config / constants  (read from config.yaml, fall back to hardcoded defaults)
+# ---------------------------------------------------------------------------
+WATCHLIST_MAX_STOCKS = _b("watchlist_max_stocks", 80)
+WATCHLIST_STALE_DAYS = _b("watchlist_stale_days", 7)
+FINVIZ_RATE_MIN      = _g("finviz_rate_min_s", 0.8)
+FINVIZ_RATE_MAX      = _g("finviz_rate_max_s", 1.5)
 
 HEADERS = {
     "User-Agent": (
@@ -71,11 +98,11 @@ HEADERS = {
 }
 
 # Trade risk parameters
-CAPITAL = 10_000
-RISK_PER_TRADE = 100  # 1% of capital
-STOP_PCT = 0.10       # 10% above pre-market high
-TIME_STOP_ET = "10:30 AM ET"
-TIME_STOP_SGT = "10:30 PM SGT"
+CAPITAL        = _g("capital_usd", 10_000)
+RISK_PER_TRADE = CAPITAL * _g("risk_per_trade_pct", 0.01)
+STOP_PCT       = _b("stop_loss_pct", 0.10)
+TIME_STOP_ET   = "10:30 AM ET"
+TIME_STOP_SGT  = "10:30 PM SGT"
 
 
 # ===========================================================================
@@ -86,90 +113,94 @@ def score_condition_1(perf_6m_pct: Optional[float], months_declining: Optional[i
     """
     Prior decline ≥50% over ≥3 months.
     Sweet spot: 60–80% over 6–12 months = 10/10.
+    Thresholds read from config.yaml → bagholder.c1_decline_*
     """
     if perf_6m_pct is None:
         return 0
     decline = abs(perf_6m_pct) if perf_6m_pct < 0 else 0
-    if decline >= 80:
-        return 10
-    elif decline >= 60:
-        return 9
-    elif decline >= 50:
-        return 7
-    elif decline >= 40:
-        return 4
-    elif decline >= 30:
-        return 2
+    t1 = _b("c1_decline_10", 80)
+    t2 = _b("c1_decline_9",  60)
+    t3 = _b("c1_decline_7",  50)
+    t4 = _b("c1_decline_4",  40)
+    t5 = _b("c1_decline_2",  30)
+    if decline >= t1:   return 10
+    elif decline >= t2: return 9
+    elif decline >= t3: return 7
+    elif decline >= t4: return 4
+    elif decline >= t5: return 2
     return 0
 
 
 def score_condition_2(price: Optional[float], market_cap_m: Optional[float]) -> int:
     """
     Price <$10, market cap <$2B. Lower = more retail-dominated = more predictable.
+    Thresholds read from config.yaml → bagholder.c2_price_* / c2_mktcap_*
     """
     score = 0
     if price is None or market_cap_m is None:
         return 0
     # Price component (5 pts)
-    if price < 1:
-        score += 5
-    elif price < 3:
-        score += 4
-    elif price < 5:
-        score += 3
-    elif price < 10:
-        score += 2
+    p1 = _b("c2_price_5", 1)
+    p2 = _b("c2_price_4", 3)
+    p3 = _b("c2_price_3", 5)
+    p4 = _b("c2_price_2", 10)
+    if price < p1:        score += 5
+    elif price < p2:      score += 4
+    elif price < p3:      score += 3
+    elif price < p4:      score += 2
     # Market cap component (5 pts)
-    if market_cap_m < 50:
-        score += 5
-    elif market_cap_m < 200:
-        score += 4
-    elif market_cap_m < 500:
-        score += 3
-    elif market_cap_m < 1000:
-        score += 2
-    elif market_cap_m < 2000:
-        score += 1
+    m1 = _b("c2_mktcap_5", 50)
+    m2 = _b("c2_mktcap_4", 200)
+    m3 = _b("c2_mktcap_3", 500)
+    m4 = _b("c2_mktcap_2", 1000)
+    m5 = _b("c2_mktcap_1", 2000)
+    if market_cap_m < m1:        score += 5
+    elif market_cap_m < m2:      score += 4
+    elif market_cap_m < m3:      score += 3
+    elif market_cap_m < m4:      score += 2
+    elif market_cap_m < m5:      score += 1
     return min(score, 10)
 
 
 def score_condition_3(short_float_pct: Optional[float]) -> int:
     """
     Short interest ≥10% of float. Higher = more bearish conviction.
+    Thresholds read from config.yaml → bagholder.c3_short_*
     """
     if short_float_pct is None:
         return 0
-    if short_float_pct >= 30:
-        return 10
-    elif short_float_pct >= 20:
-        return 8
-    elif short_float_pct >= 15:
-        return 7
-    elif short_float_pct >= 10:
-        return 6
-    elif short_float_pct >= 5:
-        return 3
+    t1 = _b("c3_short_10", 30)
+    t2 = _b("c3_short_8",  20)
+    t3 = _b("c3_short_7",  15)
+    t4 = _b("c3_short_6",  10)
+    t5 = _b("c3_short_3",   5)
+    if short_float_pct >= t1:   return 10
+    elif short_float_pct >= t2: return 8
+    elif short_float_pct >= t3: return 7
+    elif short_float_pct >= t4: return 6
+    elif short_float_pct >= t5: return 3
     return 0
 
 
 def score_condition_4(premarket_gap_pct: Optional[float]) -> int:
     """
     Pre-market spike ≥30%. Optimal 50–100%+ = max score.
+    Thresholds read from config.yaml → bagholder.c4_gap_*
     """
     if premarket_gap_pct is None:
         return 0
-    if premarket_gap_pct >= 100:
-        return 10
-    elif premarket_gap_pct >= 75:
-        return 9
-    elif premarket_gap_pct >= 50:
-        return 8
-    elif premarket_gap_pct >= 40:
-        return 7
-    elif premarket_gap_pct >= 30:
-        return 6
-    elif premarket_gap_pct >= 20:
-        return 3
+    t1 = _b("c4_gap_10", 100)
+    t2 = _b("c4_gap_9",   75)
+    t3 = _b("c4_gap_8",   50)
+    t4 = _b("c4_gap_7",   40)
+    t5 = _b("c4_gap_6",   30)
+    t6 = _b("c4_gap_3",   20)
+    if premarket_gap_pct >= t1:   return 10
+    elif premarket_gap_pct >= t2: return 9
+    elif premarket_gap_pct >= t3: return 8
+    elif premarket_gap_pct >= t4: return 7
+    elif premarket_gap_pct >= t5: return 6
+    elif premarket_gap_pct >= t6: return 3
     return 0
 
 
@@ -184,24 +215,25 @@ def score_condition_5_placeholder() -> int:
 def score_condition_6(premarket_vol: Optional[float], avg_daily_vol: Optional[float]) -> int:
     """
     Pre-market volume ≥5x average daily volume. Confirms retail FOMO surge.
+    Thresholds read from config.yaml → bagholder.c6_vol_*
     """
     if premarket_vol is None or avg_daily_vol is None or avg_daily_vol == 0:
         return 0
     ratio = premarket_vol / avg_daily_vol
-    if ratio >= 20:
-        return 10
-    elif ratio >= 15:
-        return 9
-    elif ratio >= 10:
-        return 8
-    elif ratio >= 7:
-        return 7
-    elif ratio >= 5:
-        return 6
-    elif ratio >= 3:
-        return 4
-    elif ratio >= 2:
-        return 2
+    t1 = _b("c6_vol_10", 20)
+    t2 = _b("c6_vol_9",  15)
+    t3 = _b("c6_vol_8",  10)
+    t4 = _b("c6_vol_7",   7)
+    t5 = _b("c6_vol_6",   5)
+    t6 = _b("c6_vol_4",   3)
+    t7 = _b("c6_vol_2",   2)
+    if ratio >= t1:   return 10
+    elif ratio >= t2: return 9
+    elif ratio >= t3: return 8
+    elif ratio >= t4: return 7
+    elif ratio >= t5: return 6
+    elif ratio >= t6: return 4
+    elif ratio >= t7: return 2
     return 0
 
 
@@ -210,10 +242,10 @@ def compute_total_score(c1, c2, c3, c4, c5, c6) -> int:
 
 
 def score_tier(total: int) -> str:
-    if total >= 35:
-        return "A+"
-    elif total >= 20:
-        return "Monitor"
+    aplus   = _b("tier_a_plus_min",  35)
+    monitor = _b("tier_monitor_min", 20)
+    if total >= aplus:   return "A+"
+    elif total >= monitor: return "Monitor"
     return "Skip"
 
 
@@ -274,15 +306,20 @@ def parse_float(s: str) -> Optional[float]:
 def finviz_screener_page(page: int = 1) -> list[dict]:
     """
     Scrape one page of Finviz screener results.
-    Filters: price <$10, short interest >10%, 6m perf <-30%, avg vol >100K.
+    Filters are driven by config.yaml → bagholder.watchlist_* values.
     Uses v=111 (overview). Tickers are extracted from quote.ashx?t=TICKER links,
     validated to be pure uppercase letters (1–5 chars) to avoid picking up
     price/percentage values that also appear as link text.
     """
+    max_price  = int(_b("watchlist_max_price",       10))
+    min_short  = int(_b("watchlist_min_short_float", 10))
+    max_perf   = int(abs(_b("watchlist_max_perf_6m", -30)))
+    min_vol_k  = int(_b("watchlist_min_avg_vol",    100_000) / 1000)
+
     r = (page - 1) * 20 + 1
     url = (
-        "https://finviz.com/screener.ashx?v=111"
-        "&f=sh_avgvol_o100,sh_price_u10,sh_short_o10,ta_perf2_-30to0"
+        f"https://finviz.com/screener.ashx?v=111"
+        f"&f=sh_avgvol_o{min_vol_k},sh_price_u{max_price},sh_short_o{min_short},ta_perf2_-{max_perf}to0"
         f"&r={r}"
         "&o=-volume"
     )

@@ -61,20 +61,45 @@ DATA_DIR = SCRIPT_DIR / "data"
 HISTORY_DIR = DATA_DIR / "history"
 ORF_STATE_FILE = DATA_DIR / "orf_state.json"
 ORF_TRADES_FILE = DATA_DIR / "orf_paper_trades.json"
+CONFIG_FILE = SCRIPT_DIR.parent / "config.yaml"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------------
-# Constants
+# Config loader
 # ---------------------------------------------------------------------------
-CAPITAL = 10_000
-RISK_PER_TRADE = 100          # 1% of capital
-STOP_PCT = 0.03               # 3% above OR high (tighter than Bagholder)
-MIN_MOVE_PCT = 2.0            # Minimum % move in first 15 min to qualify
-OR_WINDOW_MINUTES = 15        # Opening range = first 15 min
-TIME_STOP_ET = "11:00 AM ET"
-TIME_STOP_SGT = "11:00 PM SGT"
+
+def _load_config() -> dict:
+    """Load config.yaml. Falls back to built-in defaults if file is missing."""
+    if CONFIG_FILE.exists():
+        try:
+            import yaml
+            with open(CONFIG_FILE) as f:
+                return yaml.safe_load(f) or {}
+        except Exception as e:
+            print(f"  [!] Could not load config.yaml: {e} — using defaults")
+    return {}
+
+_CFG = _load_config()
+_ORF = _CFG.get("orf", {})
+
+def _g(key, default):
+    return _CFG.get(key, default)
+
+def _o(key, default):
+    return _ORF.get(key, default)
+
+# ---------------------------------------------------------------------------
+# Constants (read from config.yaml → orf section, fall back to defaults)
+# ---------------------------------------------------------------------------
+CAPITAL        = _g("capital_usd", 10_000)
+RISK_PER_TRADE = CAPITAL * _g("risk_per_trade_pct", 0.01)
+STOP_PCT       = _o("stop_loss_pct", 0.03)    # % above OR high
+MIN_MOVE_PCT   = _o("min_move_pct",  2.0)     # Min % move in first 15 min to qualify
+OR_WINDOW_MINUTES = 15                         # Opening range = first 15 min (fixed)
+TIME_STOP_ET   = "11:00 AM ET"
+TIME_STOP_SGT  = "11:00 PM SGT"
 
 HEADERS = {
     "User-Agent": (
@@ -298,52 +323,50 @@ def score_orf(candidate: dict) -> dict:
     c1 = 5
 
     # C2: OR size — larger range = more trapped buyers = better fade (0–10)
+    # Thresholds from config.yaml → orf.c2_or_size_*
     or_size = candidate.get("or_size_pct", 0)
-    if or_size >= 10:
-        c2 = 10
-    elif or_size >= 7:
-        c2 = 8
-    elif or_size >= 5:
-        c2 = 7
-    elif or_size >= 3:
-        c2 = 5
-    elif or_size >= 2:
-        c2 = 3
-    else:
-        c2 = 1
+    s2_t1 = _o("c2_or_size_10", 10)
+    s2_t2 = _o("c2_or_size_8",   7)
+    s2_t3 = _o("c2_or_size_7",   5)
+    s2_t4 = _o("c2_or_size_5",   3)
+    s2_t5 = _o("c2_or_size_3",   2)
+    if or_size >= s2_t1:        c2 = 10
+    elif or_size >= s2_t2:      c2 = 8
+    elif or_size >= s2_t3:      c2 = 7
+    elif or_size >= s2_t4:      c2 = 5
+    elif or_size >= s2_t5:      c2 = 3
+    else:                        c2 = 1
 
     # C3: Gap direction — gapped up into OR high = more trapped longs (0–10)
+    # Thresholds from config.yaml → orf.c3_gap_*
     gap_pct = candidate.get("gap_pct", 0)
-    if gap_pct >= 30:
-        c3 = 10
-    elif gap_pct >= 20:
-        c3 = 9
-    elif gap_pct >= 10:
-        c3 = 7
-    elif gap_pct >= 5:
-        c3 = 5
-    elif gap_pct > 0:
-        c3 = 3
-    else:
-        c3 = 1  # gapped down or flat — fade still possible but weaker
+    s3_t1 = _o("c3_gap_10", 30)
+    s3_t2 = _o("c3_gap_9",  20)
+    s3_t3 = _o("c3_gap_7",  10)
+    s3_t4 = _o("c3_gap_5",   5)
+    s3_t5 = _o("c3_gap_3",   0)
+    if gap_pct >= s3_t1:        c3 = 10
+    elif gap_pct >= s3_t2:      c3 = 9
+    elif gap_pct >= s3_t3:      c3 = 7
+    elif gap_pct >= s3_t4:      c3 = 5
+    elif gap_pct >= s3_t5:      c3 = 3
+    else:                        c3 = 1  # gapped down — fade still possible but weaker
 
     # C4: OR volume vs average — high volume spike = more trapped buyers (0–10)
+    # By 9:45 AM, expect ~4% of daily volume. Thresholds from config.yaml → orf.c4_vol_pct_*
     vol = candidate.get("volume") or 0
     avg_vol = candidate.get("avg_daily_volume") or 0
-    # By 9:45 AM, expect ~15/390 = ~4% of daily volume. Scale accordingly.
-    # If vol at 9:45 AM > 10% of avg daily vol, that's elevated for 15 minutes
+    s4_t1 = _o("c4_vol_pct_10", 30) / 100
+    s4_t2 = _o("c4_vol_pct_8",  20) / 100
+    s4_t3 = _o("c4_vol_pct_6",  10) / 100
+    s4_t4 = _o("c4_vol_pct_4",   5) / 100
     if avg_vol > 0:
         vol_ratio = vol / avg_vol
-        if vol_ratio >= 0.30:    # 30% of avg daily in first 15 min = extreme
-            c4 = 10
-        elif vol_ratio >= 0.20:
-            c4 = 8
-        elif vol_ratio >= 0.10:
-            c4 = 6
-        elif vol_ratio >= 0.05:
-            c4 = 4
-        else:
-            c4 = 2
+        if vol_ratio >= s4_t1:      c4 = 10
+        elif vol_ratio >= s4_t2:    c4 = 8
+        elif vol_ratio >= s4_t3:    c4 = 6
+        elif vol_ratio >= s4_t4:    c4 = 4
+        else:                        c4 = 2
     else:
         c4 = 3  # unknown volume
 
@@ -368,7 +391,9 @@ def score_orf(candidate: dict) -> dict:
         c6 = 2
 
     total = c1 + c2 + c3 + c4 + c5 + c6
-    tier = "A+" if total >= 35 else "Monitor" if total >= 20 else "Skip"
+    _aplus   = _o("tier_a_plus_min",  35)
+    _monitor = _o("tier_monitor_min", 20)
+    tier = "A+" if total >= _aplus else "Monitor" if total >= _monitor else "Skip"
 
     candidate["scores"] = {
         "c1_prior_trend": c1,
