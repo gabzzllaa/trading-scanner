@@ -503,6 +503,34 @@
 </head>
 <body>
 
+<!-- GitHub token modal -->
+<div id="token-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px;max-width:480px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.5)">
+    <div style="font-size:18px;font-weight:700;margin-bottom:6px">🔑 Connect to GitHub</div>
+    <div style="font-size:13px;color:var(--text-muted);margin-bottom:20px;line-height:1.6">
+      Enter a GitHub Personal Access Token to save <code style="background:var(--surface2);padding:1px 5px;border-radius:3px">config.yaml</code> directly to your repo.<br><br>
+      The token is stored only in your browser's memory for this session — it is never logged or sent anywhere except GitHub's API.
+    </div>
+
+    <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px">HOW TO CREATE A TOKEN</div>
+    <ol style="font-size:12px;color:var(--text-muted);line-height:2;padding-left:18px;margin-bottom:18px">
+      <li>Go to <a href="https://github.com/settings/tokens?type=beta" target="_blank" style="color:var(--accent-blue)">github.com/settings/tokens?type=beta</a></li>
+      <li>Click <strong style="color:var(--text)">Generate new token</strong></li>
+      <li>Name it <em>Trading Scanner Configurator</em></li>
+      <li>Under <strong style="color:var(--text)">Repository access</strong> → select <strong style="color:var(--text)">gabzzllaa/trading-scanner</strong></li>
+      <li>Under <strong style="color:var(--text)">Permissions → Contents</strong> → set to <strong style="color:var(--text)">Read and write</strong></li>
+      <li>Click <strong style="color:var(--text)">Generate token</strong> and copy it</li>
+    </ol>
+
+    <input type="password" id="pat-input" placeholder="github_pat_..." style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:6px;font-size:13px;margin-bottom:16px;font-family:monospace">
+
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button onclick="closeTokenModal()" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px">Cancel</button>
+      <button onclick="confirmToken()" style="background:var(--accent-green);border:none;color:#000;padding:8px 20px;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px">Connect & Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Header -->
 <div class="header">
   <div class="header-left">
@@ -512,9 +540,15 @@
       <div class="header subtitle" style="font-size:12px;color:var(--text-muted)">Configure scoring thresholds · Risk parameters · Strategy settings</div>
     </div>
   </div>
-  <button class="save-btn" onclick="saveConfig()" id="save-btn">
-    💾 Save config.yaml
-  </button>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div id="gh-status" style="font-size:12px;color:var(--text-muted);display:none">
+      <span id="gh-status-dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent-green);margin-right:5px;vertical-align:middle"></span>
+      <span id="gh-status-label">Connected</span>
+    </div>
+    <button class="save-btn" onclick="saveConfig()" id="save-btn">
+      💾 Save to GitHub
+    </button>
+  </div>
 </div>
 
 <!-- Layout -->
@@ -1713,44 +1747,105 @@ function copyYaml() {
   navigator.clipboard.writeText(text).then(() => showToast('📋 Copied to clipboard'));
 }
 
-// ── Save config.yaml ──
+// ── GitHub config ──
+const GITHUB_REPO  = 'gabzzllaa/trading-scanner';
+const GITHUB_PATH  = 'config.yaml';
+const GITHUB_BRANCH = 'main';
+let   _ghToken = null;   // stored in memory only, never persisted
+
+// ── Token modal ──
+function openTokenModal()  {
+  const m = document.getElementById('token-modal');
+  m.style.display = 'flex';
+  setTimeout(() => document.getElementById('pat-input').focus(), 50);
+}
+function closeTokenModal() {
+  document.getElementById('token-modal').style.display = 'none';
+}
+async function confirmToken() {
+  const tok = document.getElementById('pat-input').value.trim();
+  if (!tok) { showToast('⚠️ Please enter a token'); return; }
+  _ghToken = tok;
+  closeTokenModal();
+  document.getElementById('pat-input').value = '';
+  // Show connected indicator
+  document.getElementById('gh-status').style.display = 'inline-flex';
+  document.getElementById('gh-status-label').textContent = 'Connected · gabzzllaa/trading-scanner';
+  // Proceed with save now that we have a token
+  await pushToGitHub();
+}
+
+// ── Save config.yaml → GitHub API ──
 async function saveConfig() {
-  const c = getValues();
-  const yaml = buildYaml(c);
-
-  // Use the File System Access API if available, otherwise fall back to download
-  if (window.showSaveFilePicker) {
-    try {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: 'config.yaml',
-        types: [{ description: 'YAML file', accept: { 'text/yaml': ['.yaml', '.yml'] } }]
-      });
-      const writable = await handle.createWritable();
-      await writable.write(yaml);
-      await writable.close();
-      showToast('✅ config.yaml saved!');
-      const btn = document.getElementById('save-btn');
-      btn.textContent = '✅ Saved!';
-      setTimeout(() => { btn.textContent = '💾 Save config.yaml'; }, 3000);
-      return;
-    } catch (e) {
-      if (e.name !== 'AbortError') {
-        // Fall through to download
-      } else {
-        return; // User cancelled
-      }
-    }
+  if (!_ghToken) {
+    openTokenModal();
+    return;
   }
+  await pushToGitHub();
+}
 
-  // Fallback: trigger download
-  const blob = new Blob([yaml], { type: 'text/yaml' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'config.yaml';
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast('⬇️ config.yaml downloaded — replace the file in your Trading Scanner folder');
+async function pushToGitHub() {
+  const btn = document.getElementById('save-btn');
+  btn.textContent = '⏳ Saving…';
+  btn.disabled = true;
+
+  const yaml = buildYaml(getValues());
+  const content = btoa(unescape(encodeURIComponent(yaml))); // base64-encode (UTF-8 safe)
+
+  const apiBase = `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_PATH}`;
+  const headers  = {
+    'Authorization': `Bearer ${_ghToken}`,
+    'Accept': 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+    'Content-Type': 'application/json',
+  };
+
+  try {
+    // 1. Get current file SHA (needed for update)
+    let sha = null;
+    const getResp = await fetch(`${apiBase}?ref=${GITHUB_BRANCH}`, { headers });
+    if (getResp.ok) {
+      const existing = await getResp.json();
+      sha = existing.sha;
+    } else if (getResp.status !== 404) {
+      throw new Error(`GitHub GET failed: ${getResp.status} ${await getResp.text()}`);
+    }
+
+    // 2. Commit updated file
+    const body = {
+      message: `chore: update config.yaml via configurator [skip ci]`,
+      content,
+      branch: GITHUB_BRANCH,
+      ...(sha ? { sha } : {}),
+    };
+    const putResp = await fetch(apiBase, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (!putResp.ok) {
+      const err = await putResp.json();
+      throw new Error(err.message || `GitHub PUT failed: ${putResp.status}`);
+    }
+
+    showToast('✅ config.yaml committed to gabzzllaa/trading-scanner');
+    btn.textContent = '✅ Saved to GitHub';
+    setTimeout(() => { btn.textContent = '💾 Save to GitHub'; btn.disabled = false; }, 3000);
+
+  } catch (e) {
+    console.error(e);
+    if (e.message && e.message.includes('Bad credentials')) {
+      _ghToken = null;
+      document.getElementById('gh-status').style.display = 'none';
+      showToast('❌ Token invalid — please reconnect');
+      openTokenModal();
+    } else {
+      showToast(`❌ Save failed: ${e.message}`);
+    }
+    btn.textContent = '💾 Save to GitHub';
+    btn.disabled = false;
+  }
 }
 
 // ── Toast ──
@@ -1760,6 +1855,15 @@ function showToast(msg) {
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 4000);
 }
+
+// ── Enter key on PAT input ──
+document.getElementById('pat-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') confirmToken();
+  if (e.key === 'Escape') closeTokenModal();
+});
+document.getElementById('token-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('token-modal')) closeTokenModal();
+});
 
 // ── Init ──
 updateRiskDisplay();
