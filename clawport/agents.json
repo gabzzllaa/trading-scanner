@@ -46,21 +46,27 @@
       "emoji": "📊",
       "color": "cyan",
       "role": "scanner",
-      "description": "Opening range panic fade (planned) — fades stocks that break below opening range low",
+      "description": "Opening Range Fade — fades stocks that spike above their 9:30–9:45 AM ET opening range high then break back below it",
       "reports_to": "orchestrator",
-      "capabilities": [],
-      "status": "planned"
+      "capabilities": ["or_scan", "scoring", "breakdown_detection", "paper_trading"],
+      "script": "scanner/orf_scanner.py",
+      "modes": ["scan", "monitor", "close", "summary"],
+      "schedule": "weekdays_945am_et",
+      "status": "active"
     },
     {
       "id": "earnings-scanner",
-      "name": "Earnings Scanner",
+      "name": "Earnings Fade Scanner",
       "emoji": "💰",
       "color": "blue",
       "role": "scanner",
-      "description": "Earnings gap strategies (planned) — post-earnings fade setups",
+      "description": "Earnings Fade — identifies stocks gapping up on hollow earnings beats and fades the sell-the-news reversal from 10:00 AM ET",
       "reports_to": "orchestrator",
-      "capabilities": [],
-      "status": "planned"
+      "capabilities": ["earnings_calendar", "premarket_scan", "scoring", "fade_detection", "paper_trading"],
+      "script": "scanner/earnings_scanner.py",
+      "modes": ["scan", "open", "monitor", "close", "summary"],
+      "schedule": "weekdays_premarket_to_11am_et",
+      "status": "active"
     }
   ],
   "org_chart": {

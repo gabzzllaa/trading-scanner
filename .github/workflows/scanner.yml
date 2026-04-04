@@ -53,6 +53,18 @@ on:
           - monitor
           - close
           - summary
+      earnings_mode:
+        description: 'Earnings Fade scanner mode'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - scan
+          - open
+          - monitor
+          - close
+          - summary
 
 jobs:
   scan:
@@ -94,9 +106,11 @@ jobs:
             echo "scanner_mode=${{ inputs.mode }}" >> $GITHUB_OUTPUT
             echo "paper_mode=${{ inputs.paper_mode }}" >> $GITHUB_OUTPUT
             echo "orf_mode=${{ inputs.orf_mode }}" >> $GITHUB_OUTPUT
+            echo "earnings_mode=${{ inputs.earnings_mode }}" >> $GITHUB_OUTPUT
             echo "run_scanner=$([ -n '${{ inputs.mode }}' ] && echo true || echo false)" >> $GITHUB_OUTPUT
             echo "run_paper=$([ -n '${{ inputs.paper_mode }}' ] && echo true || echo false)" >> $GITHUB_OUTPUT
             echo "run_orf=$([ -n '${{ inputs.orf_mode }}' ] && echo true || echo false)" >> $GITHUB_OUTPUT
+            echo "run_earnings=$([ -n '${{ inputs.earnings_mode }}' ] && echo true || echo false)" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -105,9 +119,11 @@ jobs:
             echo "scanner_mode=watchlist" >> $GITHUB_OUTPUT
             echo "paper_mode=" >> $GITHUB_OUTPUT
             echo "orf_mode=" >> $GITHUB_OUTPUT
+            echo "earnings_mode=" >> $GITHUB_OUTPUT
             echo "run_scanner=true" >> $GITHUB_OUTPUT
             echo "run_paper=false" >> $GITHUB_OUTPUT
             echo "run_orf=false" >> $GITHUB_OUTPUT
+            echo "run_earnings=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -125,60 +141,78 @@ jobs:
           #   14:00, 14:30 UTC    → orf monitor
           #   15:00 UTC           → orf close
           #   15:30 UTC           → orf summary
+          #
+          # Earnings Fade schedule:
+          #   10,11,12,13:00 UTC  → earnings scan (pre-market, 6–9 AM ET)
+          #   13:30 UTC           → earnings open (9:30 AM ET — record open prices)
+          #   14:00, 14:30 UTC    → earnings monitor (10:00, 10:30 AM ET)
+          #   15:00 UTC           → earnings close (11:00 AM ET — time stop)
+          #   15:30 UTC           → earnings summary (11:30 AM ET)
 
           SCANNER_MODE=""
           PAPER_MODE=""
           ORF_MODE=""
+          EARNINGS_MODE=""
           RUN_SCANNER=false
           RUN_PAPER=false
           RUN_ORF=false
+          RUN_EARNINGS=false
 
           # Use ranges (±15 min) to handle GitHub Actions cron delays
           HHMM=$((HOUR * 60 + MIN))
 
           if [ "$HOUR" = "10" ] || [ "$HOUR" = "11" ] || [ "$HOUR" = "12" ]; then
-            SCANNER_MODE=morning; RUN_SCANNER=true
-            PAPER_MODE=premarket; RUN_PAPER=true
+            SCANNER_MODE=morning;  RUN_SCANNER=true
+            PAPER_MODE=premarket;  RUN_PAPER=true
+            EARNINGS_MODE=scan;    RUN_EARNINGS=true
 
           elif [ "$HHMM" -ge 765 ] && [ "$HHMM" -le 795 ]; then   # 13:00 ±15
-            SCANNER_MODE=morning; RUN_SCANNER=true
-            PAPER_MODE=premarket; RUN_PAPER=true
+            SCANNER_MODE=morning;  RUN_SCANNER=true
+            PAPER_MODE=premarket;  RUN_PAPER=true
+            EARNINGS_MODE=scan;    RUN_EARNINGS=true
 
           elif [ "$HHMM" -ge 796 ] && [ "$HHMM" -le 824 ]; then   # 13:30 ±15 (up to 13:44)
-            PAPER_MODE=open; RUN_PAPER=true
+            PAPER_MODE=open;       RUN_PAPER=true
+            EARNINGS_MODE=open;    RUN_EARNINGS=true
 
-          elif [ "$HHMM" -ge 825 ] && [ "$HHMM" -le 839 ]; then   # 13:45 ±7 (narrow — between open and monitor)
-            PAPER_MODE=monitor; RUN_PAPER=true
-            ORF_MODE=scan;    RUN_ORF=true
+          elif [ "$HHMM" -ge 825 ] && [ "$HHMM" -le 839 ]; then   # 13:45 ±7 (narrow)
+            PAPER_MODE=monitor;    RUN_PAPER=true
+            ORF_MODE=scan;         RUN_ORF=true
 
-          elif [ "$HHMM" -ge 840 ] && [ "$HHMM" -le 854 ]; then   # 14:00 ±7 (between scan and 14:15)
-            PAPER_MODE=monitor; RUN_PAPER=true
-            ORF_MODE=monitor;  RUN_ORF=true
+          elif [ "$HHMM" -ge 840 ] && [ "$HHMM" -le 854 ]; then   # 14:00 ±7
+            PAPER_MODE=monitor;    RUN_PAPER=true
+            ORF_MODE=monitor;      RUN_ORF=true
+            EARNINGS_MODE=monitor; RUN_EARNINGS=true
 
           elif [ "$HHMM" -ge 855 ] && [ "$HHMM" -le 869 ]; then   # 14:15 ±7
-            PAPER_MODE=monitor; RUN_PAPER=true
+            PAPER_MODE=monitor;    RUN_PAPER=true
 
           elif [ "$HHMM" -ge 870 ] && [ "$HHMM" -le 899 ]; then   # 14:30 ±15
-            PAPER_MODE=close;  RUN_PAPER=true
-            ORF_MODE=monitor;  RUN_ORF=true
+            PAPER_MODE=close;      RUN_PAPER=true
+            ORF_MODE=monitor;      RUN_ORF=true
+            EARNINGS_MODE=monitor; RUN_EARNINGS=true
 
           elif [ "$HHMM" -ge 900 ] && [ "$HHMM" -le 929 ]; then   # 15:00 ±15
-            PAPER_MODE=summary; RUN_PAPER=true
-            ORF_MODE=close;    RUN_ORF=true
+            PAPER_MODE=summary;    RUN_PAPER=true
+            ORF_MODE=close;        RUN_ORF=true
+            EARNINGS_MODE=close;   RUN_EARNINGS=true
 
           elif [ "$HHMM" -ge 930 ] && [ "$HHMM" -le 959 ]; then   # 15:30 ±15
-            ORF_MODE=summary;  RUN_ORF=true
+            ORF_MODE=summary;      RUN_ORF=true
+            EARNINGS_MODE=summary; RUN_EARNINGS=true
 
           else
-            SCANNER_MODE=morning; RUN_SCANNER=true
+            SCANNER_MODE=morning;  RUN_SCANNER=true
           fi
 
           echo "scanner_mode=$SCANNER_MODE" >> $GITHUB_OUTPUT
           echo "paper_mode=$PAPER_MODE" >> $GITHUB_OUTPUT
           echo "orf_mode=$ORF_MODE" >> $GITHUB_OUTPUT
+          echo "earnings_mode=$EARNINGS_MODE" >> $GITHUB_OUTPUT
           echo "run_scanner=$RUN_SCANNER" >> $GITHUB_OUTPUT
           echo "run_paper=$RUN_PAPER" >> $GITHUB_OUTPUT
           echo "run_orf=$RUN_ORF" >> $GITHUB_OUTPUT
+          echo "run_earnings=$RUN_EARNINGS" >> $GITHUB_OUTPUT
 
       - name: Run Bagholder scanner
         if: steps.mode.outputs.run_scanner == 'true' && steps.mode.outputs.scanner_mode != ''
@@ -204,6 +238,14 @@ jobs:
         run: |
           python scanner/orf_scanner.py --mode ${{ steps.mode.outputs.orf_mode }}
 
+      - name: Run Earnings Fade scanner
+        if: steps.mode.outputs.run_earnings == 'true' && steps.mode.outputs.earnings_mode != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python scanner/earnings_scanner.py --mode ${{ steps.mode.outputs.earnings_mode }}
+
       - name: Save watchlist artifact
         if: steps.mode.outputs.scanner_mode == 'watchlist'
         uses: actions/upload-artifact@v4
@@ -221,5 +263,7 @@ jobs:
             scanner/data/paper_trades.json
             scanner/data/orf_state.json
             scanner/data/orf_paper_trades.json
+            scanner/data/earnings_state.json
+            scanner/data/earnings_paper_trades.json
             scanner/data/history/
           retention-days: 30
