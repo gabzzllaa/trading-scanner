@@ -492,6 +492,66 @@
   pre#yaml-out .val { color: var(--accent-cyan); }
   pre#yaml-out .comment { color: #555; }
 
+  /* ── Data source box ── */
+  .data-source-box {
+    margin-top: 16px;
+    background: #0d1a1a;
+    border: 1px solid #1a3a3a;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .ds-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 10px;
+  }
+  .ds-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+  .ds-row strong { color: var(--text); }
+  .ds-row code {
+    background: var(--surface2);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+    color: var(--accent-cyan);
+  }
+  .ds-step {
+    width: 18px; height: 18px;
+    background: var(--accent-cyan);
+    color: #000;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .ds-sources {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+  .ds-badge {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 10px;
+    background: #0d2020;
+    color: var(--accent-cyan);
+    border: 1px solid #1a3a3a;
+    font-weight: 600;
+  }
+
   /* ── Responsive ── */
   @media (max-width: 700px) {
     .layout { grid-template-columns: 1fr; }
@@ -619,6 +679,21 @@
           <div class="tl-item"><div class="tl-dot"></div><strong>9:30 AM ET</strong> — Short at open</div>
           <div class="tl-arrow">›</div>
           <div class="tl-item"><div class="tl-dot"></div><strong>10:30 AM ET</strong> — Time stop</div>
+        </div>
+        <div class="data-source-box">
+          <div class="ds-title">📡 How this agent finds stocks</div>
+          <div class="ds-row">
+            <div class="ds-step">1</div>
+            <div><strong>Weekly (Sunday)</strong> — Finviz screener narrows ~5,000 stocks down to ~80 candidates matching: price &lt;$10, short interest &gt;10%, 6-month decline &gt;30%, avg volume &gt;100K. Saved as <code>watchlist.json</code>.</div>
+          </div>
+          <div class="ds-row">
+            <div class="ds-step">2</div>
+            <div><strong>Daily pre-market</strong> — Only those ~80 watchlist stocks are checked against TradingView for pre-market gap data. The full 5,000+ universe is never scanned live.</div>
+          </div>
+          <div class="ds-sources">
+            <span class="ds-badge">Finviz screener</span>
+            <span class="ds-badge">TradingView Scanner API</span>
+          </div>
         </div>
       </div>
 
@@ -905,6 +980,20 @@
           <div class="tl-arrow">›</div>
           <div class="tl-item"><div class="tl-dot"></div><strong>11:00 AM ET</strong> — Time stop</div>
         </div>
+        <div class="data-source-box">
+          <div class="ds-title">📡 How this agent finds stocks</div>
+          <div class="ds-row">
+            <div class="ds-step">1</div>
+            <div><strong>No watchlist needed.</strong> At 9:45 AM ET, TradingView's scanner API is queried for the top 100 stocks by volume. TradingView filters server-side — the full 5,000+ universe is never touched locally.</div>
+          </div>
+          <div class="ds-row">
+            <div class="ds-step">2</div>
+            <div><strong>Local filters applied</strong> — only stocks that moved &gt;2% from their open price in the first 15 minutes are kept as opening range candidates.</div>
+          </div>
+          <div class="ds-sources">
+            <span class="ds-badge">TradingView Scanner API — top 100 by volume</span>
+          </div>
+        </div>
       </div>
 
       <div class="section">
@@ -1131,6 +1220,21 @@
           <div class="tl-item"><div class="tl-dot" style="background:var(--accent-blue)"></div><strong>10:00 AM ET</strong> — Fade confirmation entry</div>
           <div class="tl-arrow">›</div>
           <div class="tl-item"><div class="tl-dot" style="background:var(--accent-blue)"></div><strong>11:00 AM ET</strong> — Time stop</div>
+        </div>
+        <div class="data-source-box">
+          <div class="ds-title">📡 How this agent finds stocks</div>
+          <div class="ds-row">
+            <div class="ds-step">1</div>
+            <div><strong>Earnings calendar</strong> — Nasdaq API pulls all stocks reporting after-hours yesterday or before-hours today (typically 20–100 stocks). This is the pre-filter — the other 4,900+ stocks are ignored entirely.</div>
+          </div>
+          <div class="ds-row">
+            <div class="ds-step">2</div>
+            <div><strong>Pre-market prices</strong> — TradingView is queried only for those earnings tickers. Stocks gapping up less than the minimum gap % threshold are discarded immediately.</div>
+          </div>
+          <div class="ds-sources">
+            <span class="ds-badge">Nasdaq Earnings Calendar API</span>
+            <span class="ds-badge">TradingView Scanner API</span>
+          </div>
         </div>
       </div>
 
