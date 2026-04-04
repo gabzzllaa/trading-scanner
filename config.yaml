@@ -54,10 +54,10 @@ bagholder:
   c2_price_3:    5              # Price <$5 → 3 pts
   c2_price_2:    10             # Price <$10 → 2 pts
   c2_mktcap_5:   50             # Mkt cap <$50M → 5 pts
-  c2_mktcap_4:   200            # Mkt cap <$200M → 4 pts
-  c2_mktcap_3:   500            # Mkt cap <$500M → 3 pts
-  c2_mktcap_2:   1000           # Mkt cap <$1000M → 2 pts
-  c2_mktcap_1:   2000           # Mkt cap <$2000M → 1 pt
+  c2_mktcap_4:   200           # Mkt cap <$200M → 4 pts
+  c2_mktcap_3:   500           # Mkt cap <$500M → 3 pts
+  c2_mktcap_2:   1000          # Mkt cap <$1000M → 2 pts
+  c2_mktcap_1:   2000          # Mkt cap <$2000M → 1 pt
 
   # ── Condition 3: Short Interest ──
   c3_short_10:   30             # ≥30% short float → 10 pts
@@ -67,19 +67,19 @@ bagholder:
   c3_short_3:    5              # ≥5% → 3 pts
 
   # ── Condition 4: Pre-market Gap % ──
-  c4_gap_10:     100            # ≥100% gap → 10 pts
-  c4_gap_9:      75             # ≥75% → 9 pts
-  c4_gap_8:      50             # ≥50% → 8 pts
-  c4_gap_7:      40             # ≥40% → 7 pts
-  c4_gap_6:      30             # ≥30% → 6 pts
-  c4_gap_3:      20             # ≥20% → 3 pts
+  c4_gap_10:     100           # ≥100% gap → 10 pts
+  c4_gap_9:      75            # ≥75% → 9 pts
+  c4_gap_8:      50            # ≥50% → 8 pts
+  c4_gap_7:      40            # ≥40% → 7 pts
+  c4_gap_6:      30            # ≥30% → 6 pts
+  c4_gap_3:      20            # ≥20% → 3 pts
 
   # ── Condition 5: Catalyst — always manual, fixed 5 pts ──
 
   # ── Condition 6: Pre-market Volume vs ADV ──
-  c6_vol_10:     20             # ≥20× ADV → 10 pts
-  c6_vol_9:      15             # ≥15× → 9 pts
-  c6_vol_8:      10             # ≥10× → 8 pts
+  c6_vol_10:     20            # ≥20× ADV → 10 pts
+  c6_vol_9:      15            # ≥15× → 9 pts
+  c6_vol_8:      10            # ≥10× → 8 pts
   c6_vol_7:      7              # ≥7× → 7 pts
   c6_vol_6:      5              # ≥5× → 6 pts
   c6_vol_4:      3              # ≥3× → 4 pts
@@ -104,8 +104,8 @@ orf:
   tier_monitor_min: 20
 
   # ── Trade Parameters ──
-  min_move_pct: 2.0             # Min % move from open to qualify
-  stop_loss_pct: 0.0300         # 3.0% above OR high
+  min_move_pct: 2             # Min % move from open to qualify
+  stop_loss_pct: 0.0300          # 3.0% above OR high
 
   # ── Condition 2: Opening Range Size ──
   c2_or_size_10: 10             # ≥10% OR size → 10 pts
@@ -122,10 +122,10 @@ orf:
   c3_gap_3:      0              # ≥0% → 3 pts
 
   # ── Condition 4: OR Volume vs ADV ──
-  c4_vol_pct_10: 30             # ≥30% of ADV in first 15min → 10 pts
-  c4_vol_pct_8:  20             # ≥20% → 8 pts
-  c4_vol_pct_6:  10             # ≥10% → 6 pts
-  c4_vol_pct_4:  5              # ≥5% → 4 pts
+  c4_vol_pct_10: 30            # ≥30% of ADV in first 15min → 10 pts
+  c4_vol_pct_8:  20            # ≥20% → 8 pts
+  c4_vol_pct_6:  10            # ≥10% → 6 pts
+  c4_vol_pct_4:  5             # ≥5% → 4 pts
 
 
 # ════════════════════════════════════════════
@@ -138,8 +138,8 @@ earnings_fade:
   tier_monitor_min: 20
 
   # ── Trade Parameters ──
-  min_gap_pct: 5                # Min pre-market gap % to include
-  stop_loss_pct: 0.0500         # 5.0% above pre-market high
+  min_gap_pct: 5              # Min pre-market gap % to include
+  stop_loss_pct: 0.0500          # 5.0% above pre-market high
 
   # ── Condition 1: Pre-market Gap Size ──
   c1_gap_10:     20             # ≥20% → 10 pts
@@ -160,8 +160,8 @@ earnings_fade:
   # ── Condition 4: Stock Profile ──
   c4_min_price:  5              # Min stock price
   c4_max_price:  50             # Max stock price
-  c4_min_mktcap: 500            # Min market cap ($M)
-  c4_max_mktcap: 10000          # Max market cap ($M)
+  c4_min_mktcap: 500           # Min market cap ($M)
+  c4_max_mktcap: 10000         # Max market cap ($M)
 
   # ── Condition 5: Prior Trend — near 52W high ──
   c5_near_high_10: 5            # Within 5% of 52W high → 10 pts
@@ -170,8 +170,8 @@ earnings_fade:
   c5_near_high_3:  30           # Within 30% → 3 pts
 
   # ── Condition 6: Open Reaction ──
-  c6_below_pm_10:  3            # Opens ≥3% below PM high → 10 pts
-  c6_below_pm_7:   1            # Opens ≥1% below PM high → 7 pts
+  c6_below_pm_10:  3             # Opens ≥3% below PM high → 10 pts
+  c6_below_pm_7:   1             # Opens ≥1% below PM high → 7 pts
 
 # ── Strategy Notes (read-only) ──────────────────────────────────────────────
 # NEVER auto-execute trades. Alert only. User makes final decision.
