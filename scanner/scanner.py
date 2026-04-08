@@ -575,8 +575,8 @@ def scan_tradingview() -> list[dict]:
         ticker, prev_close, pm_price, pm_change, pm_vol, avg_vol, mkt_cap = d[:7]
         if not ticker or pm_price is None or prev_close is None:
             continue
-        # pm_change from TV is already a fraction (e.g. 0.35 = 35%)
-        gap_pct = float(pm_change) * 100 if pm_change else 0
+        # pm_change from TV is already a percentage (e.g. 35.0 = 35%)
+        gap_pct = float(pm_change) if pm_change else 0
         results.append({
             "ticker": ticker.split(":")[1] if ":" in ticker else ticker,
             "source": "tradingview",
