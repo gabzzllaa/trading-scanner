@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-Paper Trading Agent — Bagholder Exit Liquidity Strategy
+Paper Trading Agent â Bagholder Exit Liquidity Strategy
 ---------------------------------------------------------
 Reads A+ setups from latest_scan.json and simulates the full trade lifecycle:
 
-  Phase 1 — Pre-market (scanner fires → 9:30 AM ET)
+  Phase 1 â Pre-market (scanner fires â 9:30 AM ET)
     - Loads A+ setups from latest_scan.json
     - Records paper short entry at current pre-market price
     - Polls TradingView every 5 min to track price drift
 
-  Phase 2 — Open (9:30 AM ET)
+  Phase 2 â Open (9:30 AM ET)
     - Locks entry at open price (first available real-market quote)
     - Monitors stop loss (10% above pre-market high) and Target 1 (50% retracement)
 
-  Phase 3 — Time stop (10:30 AM ET)
+  Phase 3 â Time stop (10:30 AM ET)
     - Closes any remaining open positions at current price
     - Sends Telegram P&L summary
 
@@ -25,7 +25,7 @@ Usage:
   python paper_trader.py --mode summary     # Print + send today's P&L summary
 
 GitHub Actions runs this script in sequence:
-  - premarket: immediately after morning scanner (6–9 AM ET)
+  - premarket: immediately after morning scanner (6â9 AM ET)
   - open: at 9:30 AM ET
   - monitor (x3): at 9:45, 10:00, 10:15 AM ET
   - close: at 10:30 AM ET
@@ -59,7 +59,7 @@ HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 # ---------------------------------------------------------------------------
 CAPITAL = 10_000
 RISK_PER_TRADE = 100       # 1% of capital
-STOP_PCT = 0.10            # 10% above pre-market high → stop loss for short
+STOP_PCT = 0.10            # 10% above pre-market high â stop loss for short
 TARGET1_RETRACE = 0.50     # 50% retracement of the gap
 POLL_INTERVAL_MIN = 5      # minutes between price polls
 
@@ -121,7 +121,7 @@ def _is_time_stop() -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Price fetching — TradingView Scanner API
+# Price fetching â TradingView Scanner API
 # ---------------------------------------------------------------------------
 
 def fetch_current_price(ticker: str) -> Optional[float]:
@@ -134,7 +134,7 @@ def fetch_current_price(ticker: str) -> Optional[float]:
         "markets": ["america"],
         "symbols": {"query": {"types": ["stock"]}, "tickers": [f"NASDAQ:{ticker}", f"NYSE:{ticker}", f"AMEX:{ticker}"]},
         "options": {"lang": "en"},
-        "columns": ["name", "close", "premarket_close", "premarket_change", "lp", "lp_time"],
+        "columns": ["name", "close", "premarket_close", "premarket_change"],
         "sort": {"sortBy": "name", "sortOrder": "asc"},
         "range": [0, 5],
     }
@@ -150,14 +150,14 @@ def fetch_current_price(ticker: str) -> Optional[float]:
         data = resp.json()
         for item in data.get("data", []):
             d = item.get("d", [])
-            # d = [name, close, premarket_close, premarket_change, lp, lp_time]
-            if len(d) < 5:
+            # d = [name, close, premarket_close, premarket_change]
+            if len(d) < 4:
                 continue
-            name, close, pm_close, pm_change, lp = d[:5]
+            name, close, pm_close, pm_change = d[:4]
             t = name.split(":")[1] if name and ":" in name else name
             if t and t.upper() == ticker.upper():
-                # Use last price (lp) if available, else pre-market close, else close
-                price = lp or pm_close or close
+                # Use pre-market close if available (pre-market), else regular close (market hours)
+                price = pm_close or close
                 if price:
                     return float(price)
     except Exception as e:
@@ -175,7 +175,7 @@ def fetch_open_price(ticker: str) -> Optional[float]:
         "markets": ["america"],
         "symbols": {"query": {"types": ["stock"]}, "tickers": [f"NASDAQ:{ticker}", f"NYSE:{ticker}", f"AMEX:{ticker}"]},
         "options": {"lang": "en"},
-        "columns": ["name", "open", "close", "lp"],
+        "columns": ["name", "open", "close"],
         "sort": {"sortBy": "name", "sortOrder": "asc"},
         "range": [0, 5],
     }
@@ -191,12 +191,12 @@ def fetch_open_price(ticker: str) -> Optional[float]:
         data = resp.json()
         for item in data.get("data", []):
             d = item.get("d", [])
-            if len(d) < 4:
+            if len(d) < 3:
                 continue
-            name, open_p, close, lp = d[:4]
+            name, open_p, close = d[:3]
             t = name.split(":")[1] if name and ":" in name else name
             if t and t.upper() == ticker.upper():
-                price = open_p or lp or close
+                price = open_p or close
                 if price:
                     return float(price)
     except Exception as e:
@@ -227,7 +227,7 @@ def _fresh_trades(date: str) -> dict:
         "date": date,
         "strategy": "Bagholder Exit Liquidity",
         "capital": CAPITAL,
-        "positions": {},   # ticker → position dict
+        "positions": {},   # ticker â position dict
         "closed_trades": [],
         "summary": None,
     }
@@ -244,7 +244,7 @@ def _archive_trades(data: dict) -> None:
     hist_file = HISTORY_DIR / f"paper_trades_{date}.json"
     with open(hist_file, "w") as f:
         json.dump(data, f, indent=2, default=str)
-    print(f"  📁 Archived previous day's trades → {hist_file}")
+    print(f"  ð Archived previous day's trades â {hist_file}")
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +255,7 @@ def _send_telegram(message: str) -> None:
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
-        print("  [Telegram] Env vars not set — skipping.")
+        print("  [Telegram] Env vars not set â skipping.")
         return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
@@ -265,9 +265,9 @@ def _send_telegram(message: str) -> None:
             timeout=15,
         )
         resp.raise_for_status()
-        print("  [Telegram] ✅ Message sent.")
+        print("  [Telegram] â Message sent.")
     except Exception as e:
-        print(f"  [Telegram] ✗ Failed: {e}")
+        print(f"  [Telegram] â Failed: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -277,9 +277,9 @@ def _send_telegram(message: str) -> None:
 def _compute_targets(entry: float, prev_close: float, pm_high: float) -> dict:
     """
     For a paper short:
-      stop_loss   = pm_high * (1 + STOP_PCT)   ← price rises → loss
-      target1     = entry - 0.5 * (entry - prev_close)  ← 50% retracement
-      target2     = prev_close                             ← full gap fill
+      stop_loss   = pm_high * (1 + STOP_PCT)   â price rises â loss
+      target1     = entry - 0.5 * (entry - prev_close)  â 50% retracement
+      target2     = prev_close                             â full gap fill
     """
     stop_loss = round(pm_high * (1 + STOP_PCT), 4)
     gap_size = entry - prev_close
@@ -351,11 +351,11 @@ def mode_premarket():
     Run immediately after the morning scanner fires.
     """
     print(f"\n{'='*60}")
-    print(f"  PAPER TRADER — PRE-MARKET LOAD — {_fmt_et_sgt()}")
+    print(f"  PAPER TRADER â PRE-MARKET LOAD â {_fmt_et_sgt()}")
     print(f"{'='*60}")
 
     if not LATEST_SCAN_FILE.exists():
-        print("  ⚠️  No scan file found. Run scanner first.")
+        print("  â ï¸  No scan file found. Run scanner first.")
         return
 
     with open(LATEST_SCAN_FILE) as f:
@@ -365,7 +365,7 @@ def mode_premarket():
     a_plus = [c for c in candidates if c.get("tier") == "A+"]
 
     if not a_plus:
-        print("  No A+ setups in latest scan — no paper positions to open.")
+        print("  No A+ setups in latest scan â no paper positions to open.")
         return
 
     trades = _load_trades()
@@ -374,7 +374,7 @@ def mode_premarket():
     for c in a_plus:
         ticker = c["ticker"]
         if ticker in trades["positions"]:
-            print(f"  [{ticker}] Position already open — skipping.")
+            print(f"  [{ticker}] Position already open â skipping.")
             continue
 
         prev_close = c.get("prev_close")
@@ -386,12 +386,12 @@ def mode_premarket():
         if current_pm_price is None:
             # Fall back to scanner's recorded PM price
             current_pm_price = pm_high
-            print(f"    ⚠️  Could not fetch live price — using scanner price: ${current_pm_price}")
+            print(f"    â ï¸  Could not fetch live price â using scanner price: ${current_pm_price}")
         else:
             print(f"    Current PM price: ${current_pm_price}")
 
         if not current_pm_price or not prev_close:
-            print(f"  [{ticker}] Missing price data — skipping.")
+            print(f"  [{ticker}] Missing price data â skipping.")
             continue
 
         pm_high_price = max(float(pm_high or current_pm_price), float(current_pm_price))
@@ -423,19 +423,19 @@ def mode_premarket():
         }
         trades["positions"][ticker] = position
         opened.append(position)
-        print(f"  ✅ [{ticker}] Paper short opened @ ${current_pm_price} | Stop: ${targets['stop_loss']} | T1: ${targets['target1']} | Shares: {targets['shares']}")
+        print(f"  â [{ticker}] Paper short opened @ ${current_pm_price} | Stop: ${targets['stop_loss']} | T1: ${targets['target1']} | Shares: {targets['shares']}")
 
     _save_trades(trades)
 
     if opened:
         lines = [
-            f"📋 *Paper Trader — Pre-Market Positions Opened*",
+            f"ð *Paper Trader â Pre-Market Positions Opened*",
             f"_{_fmt_et_sgt()}_",
             "",
         ]
         for p in opened:
             lines += [
-                f"📉 *{p['ticker']}* (Score: {p['scan_score']}/60, Gap: +{p['scan_gap_pct']}%)",
+                f"ð *{p['ticker']}* (Score: {p['scan_score']}/60, Gap: +{p['scan_gap_pct']}%)",
                 f"  PM Entry: ${p['pm_entry_price']}  |  Stop: ${p['stop_loss']}",
                 f"  T1: ${p['target1']}  |  T2: ${p['target2']}",
                 f"  Shares: {p['shares']}  |  Max Risk: ${p['risk_usd']}",
@@ -450,7 +450,7 @@ def mode_open():
     At market open (9:30 AM ET): fetch open price and update entry.
     """
     print(f"\n{'='*60}")
-    print(f"  PAPER TRADER — MARKET OPEN — {_fmt_et_sgt()}")
+    print(f"  PAPER TRADER â MARKET OPEN â {_fmt_et_sgt()}")
     print(f"{'='*60}")
 
     trades = _load_trades()
@@ -465,7 +465,7 @@ def mode_open():
         if open_price is None:
             open_price = fetch_current_price(ticker)
         if open_price is None:
-            print(f"  [{ticker}] ⚠️  Could not get open price — keeping PM entry.")
+            print(f"  [{ticker}] â ï¸  Could not get open price â keeping PM entry.")
             continue
 
         prev_close = position["prev_close"]
@@ -487,19 +487,19 @@ def mode_open():
             "price": open_price, "time_et": _fmt(_now_et()), "phase": "market_open"
         })
         updates.append(position)
-        print(f"  ✅ [{ticker}] Open @ ${open_price} | Stop: ${targets['stop_loss']} | T1: ${targets['target1']}")
+        print(f"  â [{ticker}] Open @ ${open_price} | Stop: ${targets['stop_loss']} | T1: ${targets['target1']}")
 
     _save_trades(trades)
 
     if updates:
         lines = [
-            f"🔔 *Paper Trader — Market Open*",
+            f"ð *Paper Trader â Market Open*",
             f"_{_fmt_et_sgt()}_",
             "",
         ]
         for p in updates:
             lines += [
-                f"📉 *{p['ticker']}* entered short @ ${p['entry_price']}",
+                f"ð *{p['ticker']}* entered short @ ${p['entry_price']}",
                 f"  Stop: ${p['stop_loss']}  |  T1: ${p['target1']}  |  T2: ${p['target2']}",
                 f"  Shares: {p['shares']}  |  Risk: ${p['risk_usd']}  |  R/R: {_compute_targets(p['entry_price'], p['prev_close'], p['pm_high'])['rr_ratio']}:1",
                 "",
@@ -510,10 +510,10 @@ def mode_open():
 
 def mode_monitor():
     """
-    Poll prices, check stop/target exits. Run every 5 min between 9:30–10:30 AM ET.
+    Poll prices, check stop/target exits. Run every 5 min between 9:30â10:30 AM ET.
     """
     print(f"\n{'='*60}")
-    print(f"  PAPER TRADER — MONITORING — {_fmt_et_sgt()}")
+    print(f"  PAPER TRADER â MONITORING â {_fmt_et_sgt()}")
     print(f"{'='*60}")
 
     trades = _load_trades()
@@ -527,7 +527,7 @@ def mode_monitor():
         print(f"  [{ticker}] Fetching price...")
         price = fetch_current_price(ticker)
         if price is None:
-            print(f"  [{ticker}] ⚠️  Could not fetch price — skipping.")
+            print(f"  [{ticker}] â ï¸  Could not fetch price â skipping.")
             continue
 
         position["price_history"].append({
@@ -544,10 +544,10 @@ def mode_monitor():
         if exit_reason:
             closed = _close_position(position, price, exit_reason, trades)
             exited.append(closed)
-            emoji = "✅" if closed["outcome"] == "WIN" else "❌"
-            print(f"  {emoji} [{ticker}] CLOSED — {exit_reason} @ ${price} | P&L: ${closed['pnl_usd']} ({closed['pnl_pct']}%)")
+            emoji = "â" if closed["outcome"] == "WIN" else "â"
+            print(f"  {emoji} [{ticker}] CLOSED â {exit_reason} @ ${price} | P&L: ${closed['pnl_usd']} ({closed['pnl_pct']}%)")
             _send_telegram(
-                f"{emoji} *Paper Trade Closed — {ticker}*\n"
+                f"{emoji} *Paper Trade Closed â {ticker}*\n"
                 f"_{_fmt_et_sgt()}_\n\n"
                 f"Exit: *{exit_reason}* @ ${price}\n"
                 f"Entry: ${position['entry_price']}  |  Shares: {position['shares']}\n"
@@ -561,10 +561,10 @@ def mode_monitor():
 
 def mode_close():
     """
-    10:30 AM ET time stop — force-close all remaining open positions.
+    10:30 AM ET time stop â force-close all remaining open positions.
     """
     print(f"\n{'='*60}")
-    print(f"  PAPER TRADER — TIME STOP CLOSE — {_fmt_et_sgt()}")
+    print(f"  PAPER TRADER â TIME STOP CLOSE â {_fmt_et_sgt()}")
     print(f"{'='*60}")
 
     trades = _load_trades()
@@ -579,19 +579,19 @@ def mode_close():
         price = fetch_current_price(ticker)
         if price is None:
             price = position.get("last_price") or position["entry_price"]
-            print(f"  [{ticker}] ⚠️  Using last known price: ${price}")
+            print(f"  [{ticker}] â ï¸  Using last known price: ${price}")
 
         closed = _close_position(position, price, "TIME_STOP", trades)
         force_closed.append(closed)
-        emoji = "✅" if closed["outcome"] == "WIN" else "❌"
+        emoji = "â" if closed["outcome"] == "WIN" else "â"
         print(f"  {emoji} [{ticker}] Time-stopped @ ${price} | P&L: ${closed['pnl_usd']} ({closed['pnl_pct']}%)")
 
     _save_trades(trades)
 
     if force_closed:
-        lines = [f"⏱️ *Paper Trader — Time Stop (10:30 AM ET)*", f"_{_fmt_et_sgt()}_", ""]
+        lines = [f"â±ï¸ *Paper Trader â Time Stop (10:30 AM ET)*", f"_{_fmt_et_sgt()}_", ""]
         for c in force_closed:
-            emoji = "✅" if c["outcome"] == "WIN" else "❌"
+            emoji = "â" if c["outcome"] == "WIN" else "â"
             lines.append(f"{emoji} *{c['ticker']}* closed @ ${c['exit_price']} | P&L: ${c['pnl_usd']} ({c['pnl_pct']}%)")
         _send_telegram("\n".join(lines))
 
@@ -601,14 +601,14 @@ def mode_summary():
     Send end-of-session P&L summary via Telegram and print to console.
     """
     print(f"\n{'='*60}")
-    print(f"  PAPER TRADER — SESSION SUMMARY — {_fmt_et_sgt()}")
+    print(f"  PAPER TRADER â SESSION SUMMARY â {_fmt_et_sgt()}")
     print(f"{'='*60}")
 
     trades = _load_trades()
 
     # Force-close any stragglers (shouldn't happen but safety net)
     if trades["positions"]:
-        print("  ⚠️  Found unclosed positions — force-closing at last known price.")
+        print("  â ï¸  Found unclosed positions â force-closing at last known price.")
         for ticker in list(trades["positions"].keys()):
             position = trades["positions"][ticker]
             price = position.get("last_price") or position["entry_price"]
@@ -618,7 +618,7 @@ def mode_summary():
     closed = trades["closed_trades"]
     if not closed:
         msg = (
-            f"📊 *Paper Trader — Session Summary*\n"
+            f"ð *Paper Trader â Session Summary*\n"
             f"_{_fmt_et_sgt()}_\n\n"
             f"No trades taken today."
         )
@@ -637,14 +637,14 @@ def mode_summary():
     print(f"\n  Trades: {len(closed)}  |  Wins: {len(wins)}  |  Losses: {len(losses)}  |  Win Rate: {win_rate}%")
     print(f"  Total P&L: ${total_pnl}  |  Avg Win: ${avg_win}  |  Avg Loss: ${avg_loss}")
     for c in closed:
-        emoji = "✅" if c["outcome"] == "WIN" else "❌"
+        emoji = "â" if c["outcome"] == "WIN" else "â"
         print(f"  {emoji} {c['ticker']:6s}  Entry: ${c['entry_price']}  Exit: ${c['exit_price']}  "
               f"P&L: ${c['pnl_usd']} ({c['pnl_pct']}%)  Reason: {c['exit_reason']}")
 
     # Build Telegram message
-    result_emoji = "🟢" if total_pnl > 0 else "🔴" if total_pnl < 0 else "⚪"
+    result_emoji = "ð¢" if total_pnl > 0 else "ð´" if total_pnl < 0 else "âª"
     lines = [
-        f"📊 *Paper Trader — Session Summary*",
+        f"ð *Paper Trader â Session Summary*",
         f"_{_fmt_et_sgt()}_",
         "",
         f"{result_emoji} *Total P&L: ${total_pnl}*  |  Win Rate: {win_rate}%",
@@ -653,10 +653,10 @@ def mode_summary():
         "",
     ]
     for c in closed:
-        emoji = "✅" if c["outcome"] == "WIN" else "❌"
+        emoji = "â" if c["outcome"] == "WIN" else "â"
         lines.append(
             f"{emoji} *{c['ticker']}*  {c['exit_reason']}  "
-            f"${c['entry_price']} → ${c['exit_price']}  "
+            f"${c['entry_price']} â ${c['exit_price']}  "
             f"P&L: ${c['pnl_usd']} ({c['pnl_pct']}%)"
         )
     lines += [
@@ -678,7 +678,7 @@ def mode_summary():
     _archive_trades(trades)
 
     _send_telegram("\n".join(lines))
-    print(f"\n  ✅ Summary sent.")
+    print(f"\n  â Summary sent.")
 
 
 # ---------------------------------------------------------------------------
