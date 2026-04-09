@@ -3,43 +3,43 @@
 Earnings Fade Scanner
 ----------------------
 Identifies stocks that gap up on earnings releases but show "sell the news"
-dynamics — beat on weak guidance, one-time items, or already-priced-in results.
+dynamics â beat on weak guidance, one-time items, or already-priced-in results.
 Trapped buyers from the pre-market spike are forced out as the stock fades
 back toward the prior close by 11 AM ET.
 
 Strategy Logic:
-  1. Pre-market (6–9 AM ET): Pull today's earnings calendar, cross-reference
+  1. Pre-market (6â9 AM ET): Pull today's earnings calendar, cross-reference
      with pre-market gappers. Score each qualifying stock.
   2. 9:30 AM ET (open): Record actual open price vs pre-market high.
-  3. 10:00 AM ET (monitor): Check if stock is fading below open price — entry signal.
+  3. 10:00 AM ET (monitor): Check if stock is fading below open price â entry signal.
   4. 10:30 AM ET (monitor): Track open positions, check exits.
-  5. 11:00 AM ET (close): Time stop — close all positions.
+  5. 11:00 AM ET (close): Time stop â close all positions.
   6. 11:30 AM ET (summary): P&L report via Telegram.
 
 Scoring (each /10, total /60):
-  1. Pre-market gap size (5–20% sweet spot; >25% = overextended)
-  2. Earnings quality — ALWAYS MANUAL (fixed 5/10 placeholder)
-  3. Pre-market volume vs ADV (≥3× confirms retail over-reaction)
-  4. Stock profile — price $5–$50, market cap $500M–$10B
-  5. Prior trend — near 52-week high (more sellers ready to exit)
-  6. Open reaction — checked at monitor phase (fading below open immediately)
+  1. Pre-market gap size (5â20% sweet spot; >25% = overextended)
+  2. Earnings quality â ALWAYS MANUAL (fixed 5/10 placeholder)
+  3. Pre-market volume vs ADV (â¥3Ã confirms retail over-reaction)
+  4. Stock profile â price $5â$50, market cap $500Mâ$10B
+  5. Prior trend â near 52-week high (more sellers ready to exit)
+  6. Open reaction â checked at monitor phase (fading below open immediately)
 
 Tiers:
-  ≥35 → A+ setup
-  20–34 → Monitor
-  <20 → Skip
+  â¥35 â A+ setup
+  20â34 â Monitor
+  <20 â Skip
 
 Hard skip rule: EPS beat + revenue beat + raised guidance = DO NOT TRADE.
 
 Usage:
-  python earnings_scanner.py --mode scan      # 6–9 AM ET: pull earnings, score gappers
+  python earnings_scanner.py --mode scan      # 6â9 AM ET: pull earnings, score gappers
   python earnings_scanner.py --mode open      # 9:30 AM ET: record open prices
   python earnings_scanner.py --mode monitor   # 10:00 & 10:30 AM ET: check fade entries
   python earnings_scanner.py --mode close     # 11:00 AM ET: time stop
   python earnings_scanner.py --mode summary   # 11:30 AM ET: P&L report
 
 SGT equivalents:
-  scan:    6:00–9:00 PM SGT
+  scan:    6:00â9:00 PM SGT
   open:    9:30 PM SGT
   monitor: 10:00 PM, 10:30 PM SGT
   close:   11:00 PM SGT
@@ -83,7 +83,7 @@ def _load_config() -> dict:
             with open(CONFIG_FILE) as f:
                 return yaml.safe_load(f) or {}
         except Exception as e:
-            print(f"  [!] Could not load config.yaml: {e} — using defaults")
+            print(f"  [!] Could not load config.yaml: {e} â using defaults")
     return {}
 
 _CFG = _load_config()
@@ -96,7 +96,7 @@ def _e(key, default):
     return _EF.get(key, default)
 
 # ---------------------------------------------------------------------------
-# Constants (read from config.yaml → earnings_fade section)
+# Constants (read from config.yaml â earnings_fade section)
 # ---------------------------------------------------------------------------
 CAPITAL        = _g("capital_usd",        10_000)
 RISK_PER_TRADE = CAPITAL * _g("risk_per_trade_pct", 0.01)
@@ -178,7 +178,7 @@ def fetch_earnings_calendar() -> list[str]:
                 or []
             )
             for row in rows:
-                # time field: "time" or "eps_time" — "After Market Close" or "Before Open"
+                # time field: "time" or "eps_time" â "After Market Close" or "Before Open"
                 report_time = (row.get("time") or row.get("eps_time") or "").lower()
                 ticker = (row.get("symbol") or row.get("ticker") or "").strip().upper()
                 if not ticker:
@@ -191,20 +191,20 @@ def fetch_earnings_calendar() -> list[str]:
         except Exception as e:
             print(f"  [!] Earnings calendar fetch error ({date_str}): {e}")
 
-    print(f"  📅 Earnings calendar: {len(tickers)} stocks reporting today")
+    print(f"  ð Earnings calendar: {len(tickers)} stocks reporting today")
     return sorted(tickers)
 
 
 def fetch_premarket_data(tickers: list[str]) -> list[dict]:
     """
     For a list of earnings tickers, fetch pre-market prices from TradingView
-    and compute gap % from prior close. Returns only stocks gapping up ≥ MIN_GAP_PCT.
+    and compute gap % from prior close. Returns only stocks gapping up â¥ MIN_GAP_PCT.
     Batches in groups of 50 to avoid oversized payloads.
     """
     if not tickers:
         return []
 
-    print(f"  📡 TradingView — fetching pre-market prices for {len(tickers)} earnings tickers...")
+    print(f"  ð¡ TradingView â fetching pre-market prices for {len(tickers)} earnings tickers...")
     url = "https://scanner.tradingview.com/america/scan"
     headers = {
         **HEADERS,
@@ -214,7 +214,7 @@ def fetch_premarket_data(tickers: list[str]) -> list[dict]:
     }
 
     results = []
-    # TradingView accepts ticker prefixes — try common exchanges
+    # TradingView accepts ticker prefixes â try common exchanges
     tv_tickers = []
     for t in tickers:
         tv_tickers += [f"NASDAQ:{t}", f"NYSE:{t}", f"AMEX:{t}"]
@@ -235,7 +235,7 @@ def fetch_premarket_data(tickers: list[str]) -> list[dict]:
                 "average_volume_10d_calc",  # 10-day ADV
                 "market_cap_basic",         # market cap
                 "52_week_high",             # 52W high
-                "lp",                       # last price (fallback)
+                "close",                    # last traded price (real-time during market hours, fallback)
             ],
             "filter": [
                 {"left": "is_primary", "operation": "equal", "right": True},
@@ -257,14 +257,14 @@ def fetch_premarket_data(tickers: list[str]) -> list[dict]:
             d = item.get("d", [])
             if len(d) < 8:
                 continue
-            name, prev_close, pm_price, pm_vol, avg_vol, mkt_cap, w52_high, lp = d[:8]
+            name, prev_close, pm_price, pm_vol, avg_vol, mkt_cap, w52_high, last_price = d[:8]
 
             if not name:
                 continue
             ticker = name.split(":")[1] if ":" in name else name
 
-            # Use premarket price if available, else last price
-            pm_p = float(pm_price) if pm_price else (float(lp) if lp else None)
+            # Use premarket price if available, else last traded price
+            pm_p = float(pm_price) if pm_price else (float(last_price) if last_price else None)
             prev_c = float(prev_close) if prev_close else None
 
             if not pm_p or not prev_c or prev_c <= 0:
@@ -316,7 +316,7 @@ def fetch_premarket_data(tickers: list[str]) -> list[dict]:
     results = list(seen.values())
     results.sort(key=lambda x: x["gap_pct"], reverse=True)
 
-    print(f"  Found {len(results)} earnings gapper(s) with gap ≥ {MIN_GAP_PCT}%")
+    print(f"  Found {len(results)} earnings gapper(s) with gap â¥ {MIN_GAP_PCT}%")
     return results
 
 
@@ -330,7 +330,7 @@ def fetch_current_price(ticker: str) -> Optional[float]:
             "tickers": [f"NASDAQ:{ticker}", f"NYSE:{ticker}", f"AMEX:{ticker}"],
         },
         "options": {"lang": "en"},
-        "columns": ["name", "lp"],
+        "columns": ["name", "close"],
         "sort": {"sortBy": "name", "sortOrder": "asc"},
         "range": [0, 5],
     }
@@ -348,10 +348,10 @@ def fetch_current_price(ticker: str) -> Optional[float]:
             d = item.get("d", [])
             if len(d) < 2:
                 continue
-            name, lp = d[0], d[1]
+            name, last_p = d[0], d[1]
             t = name.split(":")[1] if name and ":" in name else name
-            if t and t.upper() == ticker.upper() and lp:
-                return float(lp)
+            if t and t.upper() == ticker.upper() and last_p:
+                return float(last_p)
     except Exception as e:
         print(f"  [!] Price fetch error for {ticker}: {e}")
     return None
@@ -364,8 +364,8 @@ def fetch_current_price(ticker: str) -> Optional[float]:
 def score_earnings(candidate: dict) -> dict:
     """Score a candidate on all 6 Earnings Fade conditions."""
 
-    # C1: Pre-market gap size — sweet spot 5–20%
-    # Thresholds from config.yaml → earnings_fade.c1_gap_*
+    # C1: Pre-market gap size â sweet spot 5â20%
+    # Thresholds from config.yaml â earnings_fade.c1_gap_*
     gap = candidate.get("gap_pct", 0)
     t1 = _e("c1_gap_10", 20)
     t2 = _e("c1_gap_8",  15)
@@ -379,11 +379,11 @@ def score_earnings(candidate: dict) -> dict:
     elif gap >= t5:      c1 = 3
     else:                c1 = 1
 
-    # C2: Earnings quality — ALWAYS manual, fixed 5/10 placeholder
+    # C2: Earnings quality â ALWAYS manual, fixed 5/10 placeholder
     c2 = 5
 
     # C3: Pre-market volume vs ADV
-    # Thresholds from config.yaml → earnings_fade.c3_vol_*
+    # Thresholds from config.yaml â earnings_fade.c3_vol_*
     pm_vol  = candidate.get("pm_volume")  or 0
     avg_vol = candidate.get("avg_daily_vol") or 0
     t3_1 = _e("c3_vol_10", 10)
@@ -402,8 +402,8 @@ def score_earnings(candidate: dict) -> dict:
     else:
         c3 = 3  # unknown volume
 
-    # C4: Stock profile — price $5–$50, market cap $500M–$10B
-    # Thresholds from config.yaml → earnings_fade.c4_*
+    # C4: Stock profile â price $5â$50, market cap $500Mâ$10B
+    # Thresholds from config.yaml â earnings_fade.c4_*
     price     = candidate.get("pm_price")    or 0
     mkt_cap_m = candidate.get("market_cap_m") or 0
     min_p  = _e("c4_min_price",     5)
@@ -416,8 +416,8 @@ def score_earnings(candidate: dict) -> dict:
     elif price_ok or mktcap_ok:   c4 = 5
     else:                          c4 = 1
 
-    # C5: Prior trend — near 52-week high
-    # Thresholds from config.yaml → earnings_fade.c5_near_high_*
+    # C5: Prior trend â near 52-week high
+    # Thresholds from config.yaml â earnings_fade.c5_near_high_*
     near_h = candidate.get("near_high_pct")  # 0% = exactly at 52W high
     t5_1 = _e("c5_near_high_10",  5)
     t5_2 = _e("c5_near_high_8",  10)
@@ -430,7 +430,7 @@ def score_earnings(candidate: dict) -> dict:
     elif near_h <= t5_4:              c5 = 3
     else:                             c5 = 1
 
-    # C6: Open reaction — how far below PM high did price open?
+    # C6: Open reaction â how far below PM high did price open?
     # Scored at open/monitor phase. At scan time, placeholder 5/10.
     open_reaction = candidate.get("open_reaction")
     t6_1 = _e("c6_below_pm_10", 3)
@@ -550,7 +550,7 @@ def _send_telegram(message: str) -> None:
     token   = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
-        print("  [Telegram] Env vars not set — skipping.")
+        print("  [Telegram] Env vars not set â skipping.")
         return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
@@ -560,27 +560,27 @@ def _send_telegram(message: str) -> None:
             timeout=15,
         )
         resp.raise_for_status()
-        print("  [Telegram] ✅ Message sent.")
+        print("  [Telegram] â Message sent.")
     except Exception as e:
-        print(f"  [Telegram] ✗ Failed: {e}")
+        print(f"  [Telegram] â Failed: {e}")
 
 
 def _send_scan_alert(a_plus: list, monitor: list) -> None:
     if not a_plus and not monitor:
-        print("  [Telegram] No qualifying Earnings Fade setups — skipping.")
+        print("  [Telegram] No qualifying Earnings Fade setups â skipping.")
         return
 
     now_str = _fmt_et_sgt()
 
     if not a_plus:
         lines = [
-            f"👀 *Earnings Fade — {now_str}*",
+            f"ð *Earnings Fade â {now_str}*",
             f"{len(monitor)} Monitor setup(s), no A+.",
             "",
         ]
         for c in monitor[:3]:
             lines.append(
-                f"  • *{c['ticker']}*  Gap: +{c['gap_pct']}%  "
+                f"  â¢ *{c['ticker']}*  Gap: +{c['gap_pct']}%  "
                 f"PM: ${c['pm_price']}  Score: {c['total_score']}/60"
             )
         lines.append("\n_Watch at open. Verify earnings quality manually._")
@@ -588,37 +588,37 @@ def _send_scan_alert(a_plus: list, monitor: list) -> None:
         return
 
     lines = [
-        f"🚨 *EARNINGS FADE ALERT* — {now_str}",
-        f"*{len(a_plus)} A+ setup(s)* — Sell The News",
+        f"ð¨ *EARNINGS FADE ALERT* â {now_str}",
+        f"*{len(a_plus)} A+ setup(s)* â Sell The News",
         "",
     ]
     for c in a_plus:
         t  = c.get("trade", {})
         sc = c.get("scores", {})
         lines += [
-            f"💰 *{c['ticker']}*  |  Score: {c['total_score']}/60  |  Tier: A+",
+            f"ð° *{c['ticker']}*  |  Score: {c['total_score']}/60  |  Tier: A+",
             f"  Gap: +{c['gap_pct']}%  |  PM Price: ${c['pm_price']}  |  Prev Close: ${c['prev_close']}",
             f"  Mkt Cap: ${c.get('market_cap_m','?')}M  |  Near 52W High: {c.get('near_high_pct','?')}% below",
-            f"  C1(gap):{sc.get('c1_gap_size')} C2(earnings):{sc.get('c2_earnings_MANUAL')}⚠️manual "
+            f"  C1(gap):{sc.get('c1_gap_size')} C2(earnings):{sc.get('c2_earnings_MANUAL')}â ï¸manual "
             f"C3(vol):{sc.get('c3_pm_volume')} C4(profile):{sc.get('c4_stock_profile')} "
-            f"C5(trend):{sc.get('c5_prior_trend')} C6(open):{sc.get('c6_open_reaction')}⏳",
+            f"C5(trend):{sc.get('c5_prior_trend')} C6(open):{sc.get('c6_open_reaction')}â³",
             f"  Entry (short near open): ${t.get('entry','?')}",
             f"  Stop: ${t.get('stop','?')} (+{STOP_PCT*100:.0f}% above PM high)",
             f"  Target 1 (50% fill): ${t.get('target1','?')}  |  Target 2 (full fill): ${t.get('target2','?')}",
             f"  Shares: {t.get('shares','?')}  |  Risk: ${t.get('risk_usd','?')}  |  R/R: {t.get('rr_ratio','?')}:1",
-            f"  🔗 Earnings: https://stockanalysis.com/stocks/{c['ticker'].lower()}/financials/",
-            f"  🔗 Stocktwits: https://stocktwits.com/symbol/{c['ticker']}",
-            f"  🔗 Reddit: https://www.reddit.com/search/?q={c['ticker']}",
+            f"  ð Earnings: https://stockanalysis.com/stocks/{c['ticker'].lower()}/financials/",
+            f"  ð Stocktwits: https://stocktwits.com/symbol/{c['ticker']}",
+            f"  ð Reddit: https://www.reddit.com/search/?q={c['ticker']}",
             "",
         ]
     if monitor:
-        lines.append(f"👀 Also watching: {', '.join(c['ticker'] for c in monitor[:5])}")
+        lines.append(f"ð Also watching: {', '.join(c['ticker'] for c in monitor[:5])}")
         lines.append("")
     lines += [
-        "⚠️ *C2 (Earnings Quality) MUST be verified manually before trading.*",
-        "⚠️ *Clean beat (EPS + revenue + raised guidance) → DO NOT TRADE.*",
-        "⚠️ *C6 (Open Reaction) updated at 10:00 PM SGT / 10:00 AM ET monitor.*",
-        f"⚠️ *Time stop: {TIME_STOP_SGT} / {TIME_STOP_ET}.*",
+        "â ï¸ *C2 (Earnings Quality) MUST be verified manually before trading.*",
+        "â ï¸ *Clean beat (EPS + revenue + raised guidance) â DO NOT TRADE.*",
+        "â ï¸ *C6 (Open Reaction) updated at 10:00 PM SGT / 10:00 AM ET monitor.*",
+        f"â ï¸ *Time stop: {TIME_STOP_SGT} / {TIME_STOP_ET}.*",
     ]
     _send_telegram("\n".join(lines))
 
@@ -628,15 +628,15 @@ def _send_monitor_alert(ticker: str, candidate: dict, action: str) -> None:
     sc = candidate.get("scores", {})
     price = candidate.get("entry_price") or t.get("entry", "?")
     lines = [
-        f"📉 *EARNINGS FADE — {action}* — {_fmt_et_sgt()}",
+        f"ð *EARNINGS FADE â {action}* â {_fmt_et_sgt()}",
         f"*{ticker}*  Score: {candidate['total_score']}/60  Tier: {candidate['tier']}",
         f"  Gap: +{candidate['gap_pct']}%  |  PM High: ${candidate['pm_price']}",
         f"  Open reaction: {candidate.get('open_reaction','?')}% below PM high  (C6 updated: {sc.get('c6_open_reaction','?')}pts)",
         f"  Entry: ${price}  |  Stop: ${t.get('stop','?')}  |  T1: ${t.get('target1','?')}  |  T2: ${t.get('target2','?')}",
         f"  Shares: {t.get('shares','?')}  |  Risk: ${t.get('risk_usd','?')}",
         "",
-        "⚠️ *Confirm earnings quality is weak before entering.*",
-        "🚫 *Skip if EPS + revenue + guidance all beat.*",
+        "â ï¸ *Confirm earnings quality is weak before entering.*",
+        "ð« *Skip if EPS + revenue + guidance all beat.*",
     ]
     _send_telegram("\n".join(lines))
 
@@ -651,23 +651,23 @@ def _send_summary(trades: dict) -> None:
     loss_count  = sum(1 for t in closed if t.get("pnl_usd", 0) <= 0)
 
     lines = [
-        f"📊 *Earnings Fade — Daily Summary — {now_str}*",
+        f"ð *Earnings Fade â Daily Summary â {now_str}*",
         f"  Closed trades: {len(closed)}  |  Wins: {win_count}  Losses: {loss_count}",
         f"  Total P&L: ${total_pnl:+.2f}",
         "",
     ]
     for t in closed:
         pnl = t.get("pnl_usd", 0)
-        emoji = "✅" if pnl > 0 else "❌"
+        emoji = "â" if pnl > 0 else "â"
         lines.append(
             f"  {emoji} *{t['ticker']}*  Entry: ${t.get('entry_price','?')}  "
             f"Exit: ${t.get('exit_price','?')}  P&L: ${pnl:+.2f}  "
             f"Reason: {t.get('exit_reason','?')}"
         )
     if open_p:
-        lines += ["", f"  ⚠️ {len(open_p)} position(s) still open — manual close required."]
+        lines += ["", f"  â ï¸ {len(open_p)} position(s) still open â manual close required."]
         for ticker in open_p:
-            lines.append(f"    • {ticker}")
+            lines.append(f"    â¢ {ticker}")
     if not closed and not open_p:
         lines.append("  No trades today.")
     _send_telegram("\n".join(lines))
@@ -724,7 +724,7 @@ def _check_exits(trades: dict, state: dict, force_close: bool = False) -> None:
             exit_p = stop
         elif not pos.get("hit_target1") and price <= t1:
             pos["hit_target1"] = True
-            print(f"  [{ticker}] ✅ Target 1 hit @ ${price:.4f} — holding for Target 2")
+            print(f"  [{ticker}] â Target 1 hit @ ${price:.4f} â holding for Target 2")
             continue
         elif pos.get("hit_target1") and price <= pos["target2"]:
             reason = "target2"
@@ -743,10 +743,10 @@ def _check_exits(trades: dict, state: dict, force_close: bool = False) -> None:
                 "strategy":    "Earnings Fade",
             })
             to_close.append(ticker)
-            emoji = "✅" if pnl > 0 else "❌"
-            print(f"  [{ticker}] {emoji} Closed — Reason: {reason} | Exit: ${exit_p:.4f} | P&L: ${pnl:+.2f}")
+            emoji = "â" if pnl > 0 else "â"
+            print(f"  [{ticker}] {emoji} Closed â Reason: {reason} | Exit: ${exit_p:.4f} | P&L: ${pnl:+.2f}")
             _send_telegram(
-                f"{emoji} *Earnings Fade EXIT* — {_fmt_et_sgt()}\n"
+                f"{emoji} *Earnings Fade EXIT* â {_fmt_et_sgt()}\n"
                 f"*{ticker}*  Reason: `{reason}`  Entry: ${entry}  Exit: ${exit_p:.4f}  P&L: ${pnl:+.2f}"
             )
 
@@ -763,10 +763,10 @@ def _check_exits(trades: dict, state: dict, force_close: bool = False) -> None:
 
 def mode_scan():
     """
-    6–9 AM ET: Pull earnings calendar, fetch pre-market prices, score gappers.
+    6â9 AM ET: Pull earnings calendar, fetch pre-market prices, score gappers.
     """
     print(f"\n{'='*60}")
-    print(f"  EARNINGS FADE — PRE-MARKET SCAN — {_fmt_et_sgt()}")
+    print(f"  EARNINGS FADE â PRE-MARKET SCAN â {_fmt_et_sgt()}")
     print(f"{'='*60}")
 
     # Pull earnings tickers
@@ -778,7 +778,7 @@ def mode_scan():
     # Fetch pre-market prices and filter by gap
     candidates = fetch_premarket_data(tickers)
     if not candidates:
-        print(f"  No earnings gappers ≥{MIN_GAP_PCT}% found.")
+        print(f"  No earnings gappers â¥{MIN_GAP_PCT}% found.")
         return
 
     # Score
@@ -791,7 +791,7 @@ def mode_scan():
     print(f"\n  RESULTS: {len(a_plus)} A+ | {len(monitor)} Monitor | {len(scored)-len(a_plus)-len(monitor)} Skip")
 
     if a_plus:
-        print("\n🔥 A+ SETUPS:")
+        print("\nð¥ A+ SETUPS:")
         for c in a_plus:
             sc = c.get("scores", {})
             t  = c.get("trade", {})
@@ -802,10 +802,10 @@ def mode_scan():
             print(f"  Entry:${t.get('entry')} Stop:${t.get('stop')} "
                   f"T1:${t.get('target1')} T2:${t.get('target2')}")
             print(f"  Shares:{t.get('shares')} Risk:${t.get('risk_usd')} R/R:{t.get('rr_ratio')}:1")
-            print(f"  ⚠️  Verify earnings: https://stockanalysis.com/stocks/{c['ticker'].lower()}/financials/")
+            print(f"  â ï¸  Verify earnings: https://stockanalysis.com/stocks/{c['ticker'].lower()}/financials/")
 
     if monitor:
-        print("\n👀 MONITOR:")
+        print("\nð MONITOR:")
         for c in monitor[:5]:
             print(f"  {c['ticker']:6s}  Gap:+{c['gap_pct']}%  PM:${c['pm_price']}  Score:{c['total_score']}/60")
 
@@ -832,13 +832,13 @@ def mode_open():
     Update C6 score accordingly.
     """
     print(f"\n{'='*60}")
-    print(f"  EARNINGS FADE — MARKET OPEN — {_fmt_et_sgt()}")
+    print(f"  EARNINGS FADE â MARKET OPEN â {_fmt_et_sgt()}")
     print(f"{'='*60}")
 
     state = _load_state()
     candidates = state.get("candidates", {})
     if not candidates:
-        print("  No candidates in state — run scan first.")
+        print("  No candidates in state â run scan first.")
         return
 
     qualifying = {t: c for t, c in candidates.items() if c.get("tier") in ("A+", "Monitor")}
@@ -879,10 +879,10 @@ def mode_open():
         candidate["scores"]["tier"] = candidate["tier"]
 
         updated += 1
-        direction = "▼" if open_reaction > 0 else "▲"
+        direction = "â¼" if open_reaction > 0 else "â²"
         print(f"  [{ticker}] Open: ${price:.2f}  PM: ${pm_p}  "
               f"Reaction: {direction}{abs(open_reaction):.1f}%  "
-              f"C6: {old_c6}→{c6_new}  Score: {new_total}/60  Tier: {candidate['tier']}")
+              f"C6: {old_c6}â{c6_new}  Score: {new_total}/60  Tier: {candidate['tier']}")
 
     state["candidates"] = {**candidates, **qualifying}
     state["open_checked_at"] = _fmt_et_sgt()
@@ -896,7 +896,7 @@ def mode_monitor():
     Entry condition: price drops below open price (confirming sellers in control).
     """
     print(f"\n{'='*60}")
-    print(f"  EARNINGS FADE — MONITORING — {_fmt_et_sgt()}")
+    print(f"  EARNINGS FADE â MONITORING â {_fmt_et_sgt()}")
     print(f"{'='*60}")
 
     state  = _load_state()
@@ -904,7 +904,7 @@ def mode_monitor():
     candidates = state.get("candidates", {})
 
     if not candidates:
-        print("  No candidates in state — run scan first.")
+        print("  No candidates in state â run scan first.")
         return
 
     # Check for new fade entries
@@ -918,7 +918,7 @@ def mode_monitor():
 
         open_p = candidate.get("open_price")
         if not open_p:
-            print(f"  [{ticker}] No open price recorded — skipping (run open mode first).")
+            print(f"  [{ticker}] No open price recorded â skipping (run open mode first).")
             continue
 
         print(f"  [{ticker}] Checking fade (open: ${open_p})...")
@@ -930,13 +930,13 @@ def mode_monitor():
         # Entry: price below open price confirms sellers are in control
         if price < open_p:
             fade_pct = round((open_p - price) / open_p * 100, 2)
-            print(f"  [{ticker}] 🚨 FADE TRIGGERED — price ${price:.4f} is {fade_pct}% below open ${open_p}")
+            print(f"  [{ticker}] ð¨ FADE TRIGGERED â price ${price:.4f} is {fade_pct}% below open ${open_p}")
             candidate["fade_triggered"] = True
             candidate["entry_price"]    = round(price, 4)
             _open_paper_position(ticker, candidate, trades)
             _send_monitor_alert(ticker, candidate, "FADE ENTRY")
         else:
-            print(f"  [{ticker}] No fade yet — price ${price:.4f} (open: ${open_p})")
+            print(f"  [{ticker}] No fade yet â price ${price:.4f} (open: ${open_p})")
 
     # Check exits for already-open positions
     if trades["positions"]:
@@ -950,10 +950,10 @@ def mode_monitor():
 
 def mode_close():
     """
-    11:00 AM ET: Time stop — force-close all open positions.
+    11:00 AM ET: Time stop â force-close all open positions.
     """
     print(f"\n{'='*60}")
-    print(f"  EARNINGS FADE — TIME STOP — {_fmt_et_sgt()}")
+    print(f"  EARNINGS FADE â TIME STOP â {_fmt_et_sgt()}")
     print(f"{'='*60}")
 
     state  = _load_state()
@@ -967,7 +967,7 @@ def mode_close():
         _save_trades(trades)
         _save_state(state)
 
-    print("  ✅ All positions closed.")
+    print("  â All positions closed.")
 
 
 def mode_summary():
@@ -975,7 +975,7 @@ def mode_summary():
     11:30 AM ET: Send daily P&L summary via Telegram.
     """
     print(f"\n{'='*60}")
-    print(f"  EARNINGS FADE — DAILY SUMMARY — {_fmt_et_sgt()}")
+    print(f"  EARNINGS FADE â DAILY SUMMARY â {_fmt_et_sgt()}")
     print(f"{'='*60}")
 
     trades = _load_trades()
@@ -986,7 +986,7 @@ def mode_summary():
     print(f"  Trades today: {len(closed)}  Wins: {win_count}  Total P&L: ${total_pnl:+.2f}")
     for t in closed:
         pnl   = t.get("pnl_usd", 0)
-        emoji = "✅" if pnl > 0 else "❌"
+        emoji = "â" if pnl > 0 else "â"
         print(f"  {emoji} {t['ticker']}  P&L: ${pnl:+.2f}  ({t.get('exit_reason','')})")
 
     trades["summary"] = {
