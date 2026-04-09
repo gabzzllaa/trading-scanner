@@ -543,6 +543,58 @@ def _archive_file(src: Path, dest_name: str) -> None:
 
 
 # ===========================================================================
+# SHORTABILITY CHECK
+# ===========================================================================
+
+def check_shortability(tickers: list) -> dict:
+    """
+    Check borrow availability via iborrowdesk.com (free, no auth).
+    Returns { "TICKER": { "shortable": bool|None, "fee_pct": float|None } }
+    shortable=True → shares available, shortable=False → no borrow, None → unknown
+    """
+    results = {}
+    if not tickers:
+        return results
+    print(f"\n  🔍 Shortability check ({len(tickers)} tickers via iborrowdesk.com)...")
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    for ticker in tickers:
+        try:
+            resp = session.get(f"https://iborrowdesk.com/api/ticker/{ticker}", timeout=10)
+            if resp.status_code == 404:
+                results[ticker] = {"shortable": None, "fee_pct": None}
+                print(f"    {ticker}: not found (unknown)")
+                continue
+            if not resp.ok:
+                results[ticker] = {"shortable": None, "fee_pct": None}
+                print(f"    {ticker}: iborrowdesk error {resp.status_code}")
+                continue
+            data = resp.json()
+            for broker_data in [data.get("ibkr", []), data.get("schwab", [])]:
+                if broker_data:
+                    latest   = broker_data[-1]
+                    available = latest.get("available", 0)
+                    fee       = latest.get("rate")
+                    shortable = available > 0
+                    results[ticker] = {"shortable": shortable, "fee_pct": fee}
+                    icon = "✅" if shortable else "❌"
+                    fee_str = f"{fee:.2f}%" if fee is not None else "?"
+                    print(f"    {ticker}: {icon} {'shortable fee=' + fee_str if shortable else 'NOT shortable'}")
+                    break
+            else:
+                results[ticker] = {"shortable": None, "fee_pct": None}
+                print(f"    {ticker}: no data (unknown)")
+        except requests.exceptions.ConnectionError:
+            print(f"    [{ticker}] iborrowdesk unreachable — skipping shortability check")
+            results[ticker] = {"shortable": None, "fee_pct": None}
+        except Exception as e:
+            results[ticker] = {"shortable": None, "fee_pct": None}
+            print(f"    [{ticker}] shortability error: {type(e).__name__}")
+        time.sleep(0.3)
+    return results
+
+
+# ===========================================================================
 # TELEGRAM
 # ===========================================================================
 
@@ -565,7 +617,8 @@ def _send_telegram(message: str) -> None:
         print(f"  [Telegram] ✗ Failed: {e}")
 
 
-def _send_scan_alert(a_plus: list, monitor: list) -> None:
+def _send_scan_alert(a_plus: list, monitor: list, no_borrow: list = None) -> None:
+    no_borrow = no_borrow or []
     if not a_plus and not monitor:
         print("  [Telegram] No qualifying Earnings Fade setups — skipping.")
         return
@@ -579,10 +632,13 @@ def _send_scan_alert(a_plus: list, monitor: list) -> None:
             "",
         ]
         for c in monitor[:3]:
+            borrow_icon = "✅" if c.get("shortable") else ("❌" if c.get("shortable") is False else "❓")
             lines.append(
-                f"  • *{c['ticker']}*  Gap: +{c['gap_pct']}%  "
+                f"  • *{c['ticker']}* {borrow_icon}  Gap: +{c['gap_pct']}%  "
                 f"PM: ${c['pm_price']}  Score: {c['total_score']}/60"
             )
+        if no_borrow:
+            lines.append(f"\n🚫 Excluded (no borrow): {', '.join(c['ticker'] for c in no_borrow)}")
         lines.append("\n_Watch at open. Verify earnings quality manually._")
         _send_telegram("\n".join(lines))
         return
@@ -595,8 +651,16 @@ def _send_scan_alert(a_plus: list, monitor: list) -> None:
     for c in a_plus:
         t  = c.get("trade", {})
         sc = c.get("scores", {})
+        if c.get("shortable") is True:
+            fee_str = f"{c['borrow_fee_pct']:.2f}%" if c.get("borrow_fee_pct") is not None else "?"
+            borrow_line = f"  ✅ Shortable  |  Borrow fee: {fee_str}/yr"
+        elif c.get("shortable") is False:
+            borrow_line = "  ❌ NO BORROW — do not trade"
+        else:
+            borrow_line = "  ⚠️ Borrow status unknown — verify with broker"
         lines += [
             f"💰 *{c['ticker']}*  |  Score: {c['total_score']}/60  |  Tier: A+",
+            borrow_line,
             f"  Gap: +{c['gap_pct']}%  |  PM Price: ${c['pm_price']}  |  Prev Close: ${c['prev_close']}",
             f"  Mkt Cap: ${c.get('market_cap_m','?')}M  |  Near 52W High: {c.get('near_high_pct','?')}% below",
             f"  C1(gap):{sc.get('c1_gap_size')} C2(earnings):{sc.get('c2_earnings_MANUAL')}⚠️manual "
@@ -612,7 +676,14 @@ def _send_scan_alert(a_plus: list, monitor: list) -> None:
             "",
         ]
     if monitor:
-        lines.append(f"👀 Also watching: {', '.join(c['ticker'] for c in monitor[:5])}")
+        monitor_parts = []
+        for c in monitor[:5]:
+            borrow_icon = "✅" if c.get("shortable") else ("❌" if c.get("shortable") is False else "❓")
+            monitor_parts.append(f"{c['ticker']}({borrow_icon})")
+        lines.append(f"👀 Also watching: {', '.join(monitor_parts)}")
+        lines.append("")
+    if no_borrow:
+        lines.append(f"🚫 Excluded (no borrow): {', '.join(c['ticker'] for c in no_borrow)}")
         lines.append("")
     lines += [
         "⚠️ *C2 (Earnings Quality) MUST be verified manually before trading.*",
@@ -788,14 +859,35 @@ def mode_scan():
     a_plus  = [s for s in scored if s.get("tier") == "A+"]
     monitor = [s for s in scored if s.get("tier") == "Monitor"]
 
-    print(f"\n  RESULTS: {len(a_plus)} A+ | {len(monitor)} Monitor | {len(scored)-len(a_plus)-len(monitor)} Skip")
+    # Shortability check — only query actionable candidates
+    actionable = [s for s in scored if s.get("tier") in ("A+", "Monitor")]
+    if actionable:
+        short_map = check_shortability([s["ticker"] for s in actionable])
+        for s in scored:
+            info = short_map.get(s["ticker"], {"shortable": None, "fee_pct": None})
+            s["shortable"]     = info.get("shortable")
+            s["borrow_fee_pct"] = info.get("fee_pct")
+            if s.get("shortable") is False and s.get("tier") in ("A+", "Monitor"):
+                s["tier_original"] = s["tier"]
+                s["tier"] = "No Borrow"
+    else:
+        for s in scored:
+            s["shortable"] = None
+            s["borrow_fee_pct"] = None
+
+    a_plus    = [s for s in scored if s.get("tier") == "A+"]
+    monitor   = [s for s in scored if s.get("tier") == "Monitor"]
+    no_borrow = [s for s in scored if s.get("tier") == "No Borrow"]
+
+    print(f"\n  RESULTS: {len(a_plus)} A+ | {len(monitor)} Monitor | {len(no_borrow)} No-Borrow | {len(scored)-len(a_plus)-len(monitor)-len(no_borrow)} Skip")
 
     if a_plus:
         print("\n🔥 A+ SETUPS:")
         for c in a_plus:
             sc = c.get("scores", {})
             t  = c.get("trade", {})
-            print(f"\n  {c['ticker']}  Gap:+{c['gap_pct']}%  PM:${c['pm_price']}  Score:{c['total_score']}/60")
+            borrow = "✅ shortable" if c.get("shortable") else ("⚠️ borrow unknown" if c.get("shortable") is None else "❌ NO BORROW")
+            print(f"\n  {c['ticker']}  Gap:+{c['gap_pct']}%  PM:${c['pm_price']}  Score:{c['total_score']}/60  {borrow}")
             print(f"  C1:{sc.get('c1_gap_size')} C2:{sc.get('c2_earnings_MANUAL')}(manual) "
                   f"C3:{sc.get('c3_pm_volume')} C4:{sc.get('c4_stock_profile')} "
                   f"C5:{sc.get('c5_prior_trend')} C6:{sc.get('c6_open_reaction')}(pending open)")
@@ -807,7 +899,13 @@ def mode_scan():
     if monitor:
         print("\n👀 MONITOR:")
         for c in monitor[:5]:
-            print(f"  {c['ticker']:6s}  Gap:+{c['gap_pct']}%  PM:${c['pm_price']}  Score:{c['total_score']}/60")
+            borrow = "✅" if c.get("shortable") else ("❌" if c.get("shortable") is False else "❓")
+            print(f"  {c['ticker']:6s}  Gap:+{c['gap_pct']}%  PM:${c['pm_price']}  Score:{c['total_score']}/60  Borrow:{borrow}")
+
+    if no_borrow:
+        print(f"\n🚫 NO BORROW ({len(no_borrow)} excluded):")
+        for c in no_borrow:
+            print(f"  {c['ticker']:6s}  Was:{c.get('tier_original','?')} — no shares available to short")
 
     # Save state
     state = _load_state()
@@ -822,7 +920,7 @@ def mode_scan():
         json.dump({"scanned_at": state["scanned_at"], "candidates": scored}, f, indent=2, default=str)
 
     # Alert
-    _send_scan_alert(a_plus, monitor)
+    _send_scan_alert(a_plus, monitor, no_borrow)
 
 
 def mode_open():
