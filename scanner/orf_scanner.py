@@ -2,14 +2,14 @@
 """
 Opening Range Fade (ORF) Scanner
 ----------------------------------
-Identifies stocks that spike above their 9:30–9:45 AM ET opening range high,
-then break back below it — a high-probability short setup as trapped buyers
+Identifies stocks that spike above their 9:30â9:45 AM ET opening range high,
+then break back below it â a high-probability short setup as trapped buyers
 from the initial spike are forced to sell.
 
 Strategy Logic:
   1. At 9:45 AM ET: scan for stocks that moved >2% in the first 15 minutes.
      Record the Opening Range (OR) high and low for each.
-  2. At 9:45–11:00 AM ET: monitor for OR high breakdown — price closing back
+  2. At 9:45â11:00 AM ET: monitor for OR high breakdown â price closing back
      below the OR high after a spike above it.
   3. Entry: short at OR high breakdown (price crosses back below OR high)
   4. Stop loss: 3% above OR high
@@ -18,21 +18,21 @@ Strategy Logic:
   7. Time stop: 11:00 AM ET
 
 Scoring (each /10, total /60):
-  1. Prior trend (declining stock) — weak stocks fade harder
-  2. OR size (range as % of price) — larger OR = more trapped buyers
-  3. Gap direction — gapped up into OR high = more fuel for fade
-  4. OR volume vs average — confirms conviction of initial spike
-  5. Catalyst check — manual (same rule: M&A/FDA = do not trade)
-  6. Rejection quality — how cleanly price rejected OR high
+  1. Prior trend (declining stock) â weak stocks fade harder
+  2. OR size (range as % of price) â larger OR = more trapped buyers
+  3. Gap direction â gapped up into OR high = more fuel for fade
+  4. OR volume vs average â confirms conviction of initial spike
+  5. Catalyst check â manual (same rule: M&A/FDA = do not trade)
+  6. Rejection quality â how cleanly price rejected OR high
 
 Tiers:
-  ≥35 → A+ setup
-  20–34 → Monitor
-  <20 → Skip
+  â¥35 â A+ setup
+  20â34 â Monitor
+  <20 â Skip
 
 Usage:
   python orf_scanner.py --mode scan      # 9:45 AM ET: scan + record OR levels
-  python orf_scanner.py --mode monitor   # 10:00–10:45 AM ET: check for breakdown entry
+  python orf_scanner.py --mode monitor   # 10:00â10:45 AM ET: check for breakdown entry
   python orf_scanner.py --mode close     # 11:00 AM ET: time stop
   python orf_scanner.py --mode summary   # 11:30 AM ET: P&L summary
 
@@ -78,7 +78,7 @@ def _load_config() -> dict:
             with open(CONFIG_FILE) as f:
                 return yaml.safe_load(f) or {}
         except Exception as e:
-            print(f"  [!] Could not load config.yaml: {e} — using defaults")
+            print(f"  [!] Could not load config.yaml: {e} â using defaults")
     return {}
 
 _CFG = _load_config()
@@ -91,7 +91,7 @@ def _o(key, default):
     return _ORF.get(key, default)
 
 # ---------------------------------------------------------------------------
-# Constants (read from config.yaml → orf section, fall back to defaults)
+# Constants (read from config.yaml â orf section, fall back to defaults)
 # ---------------------------------------------------------------------------
 CAPITAL        = _g("capital_usd", 10_000)
 RISK_PER_TRADE = CAPITAL * _g("risk_per_trade_pct", 0.01)
@@ -153,9 +153,9 @@ def fetch_opening_range_movers() -> list[dict]:
     """
     Fetch stocks that have moved >2% since the open using TradingView Scanner.
     Returns stocks with current price, open price, high, low, volume, prev_close.
-    Called at 9:45 AM ET — 15 min after open.
+    Called at 9:45 AM ET â 15 min after open.
     """
-    print("  📡 TradingView — fetching opening range movers...")
+    print("  ð¡ TradingView â fetching opening range movers...")
     url = "https://scanner.tradingview.com/america/scan"
     payload = {
         "markets": ["america"],
@@ -167,7 +167,7 @@ def fetch_opening_range_movers() -> list[dict]:
             "open",                    # today's open
             "high",                    # today's high so far
             "low",                     # today's low so far
-            "lp",                      # last price
+            "close",                   # last traded price (real-time during market hours)
             "volume",                  # today's volume so far
             "average_volume_10d_calc",
             "market_cap_basic",
@@ -214,16 +214,16 @@ def fetch_opening_range_movers() -> list[dict]:
         d = item.get("d", [])
         if len(d) < 9:
             continue
-        name, prev_close, open_p, high, low, lp, volume, avg_vol, mkt_cap = d[:9]
+        name, prev_close, open_p, high, low, last_price, volume, avg_vol, mkt_cap = d[:9]
 
-        if not name or not open_p or not lp:
+        if not name or not open_p or not last_price:
             continue
 
         ticker = name.split(":")[1] if ":" in name else name
 
-        or_high = float(high) if high else float(lp)
-        or_low = float(low) if low else float(lp)
-        current_price = float(lp)
+        or_high = float(high) if high else float(last_price)
+        or_low = float(low) if low else float(last_price)
+        current_price = float(last_price)
         open_price = float(open_p)
         prev_close_f = float(prev_close) if prev_close else None
 
@@ -232,11 +232,11 @@ def fetch_opening_range_movers() -> list[dict]:
             (current_price - open_price) / open_price * 100 if open_price else 0
         )
 
-        # Filter: price ≥ $0.50
+        # Filter: price â¥ $0.50
         if current_price < 0.50:
             continue
 
-        # Filter: market cap ≥ $1M
+        # Filter: market cap â¥ $1M
         if mkt_cap and float(mkt_cap) < 1_000_000:
             continue
 
@@ -283,7 +283,7 @@ def fetch_current_price(ticker: str) -> Optional[float]:
             "tickers": [f"NASDAQ:{ticker}", f"NYSE:{ticker}", f"AMEX:{ticker}"],
         },
         "options": {"lang": "en"},
-        "columns": ["name", "lp", "close"],
+        "columns": ["name", "close"],
         "sort": {"sortBy": "name", "sortOrder": "asc"},
         "range": [0, 5],
     }
@@ -301,10 +301,10 @@ def fetch_current_price(ticker: str) -> Optional[float]:
             d = item.get("d", [])
             if len(d) < 2:
                 continue
-            name, lp = d[0], d[1]
+            name, last_p = d[0], d[1]
             t = name.split(":")[1] if name and ":" in name else name
-            if t and t.upper() == ticker.upper() and lp:
-                return float(lp)
+            if t and t.upper() == ticker.upper() and last_p:
+                return float(last_p)
     except Exception as e:
         print(f"    [!] Price fetch error for {ticker}: {e}")
     return None
@@ -317,13 +317,13 @@ def fetch_current_price(ticker: str) -> Optional[float]:
 def score_orf(candidate: dict) -> dict:
     """Score a candidate on all 6 ORF conditions."""
 
-    # C1: Prior trend — is this a declining stock? (0–10)
+    # C1: Prior trend â is this a declining stock? (0â10)
     # We don't have 6m perf here without watchlist cross-ref, default to 5
-    # (neutral — this strategy works on any stock, not just declining ones)
+    # (neutral â this strategy works on any stock, not just declining ones)
     c1 = 5
 
-    # C2: OR size — larger range = more trapped buyers = better fade (0–10)
-    # Thresholds from config.yaml → orf.c2_or_size_*
+    # C2: OR size â larger range = more trapped buyers = better fade (0â10)
+    # Thresholds from config.yaml â orf.c2_or_size_*
     or_size = candidate.get("or_size_pct", 0)
     s2_t1 = _o("c2_or_size_10", 10)
     s2_t2 = _o("c2_or_size_8",   7)
@@ -337,8 +337,8 @@ def score_orf(candidate: dict) -> dict:
     elif or_size >= s2_t5:      c2 = 3
     else:                        c2 = 1
 
-    # C3: Gap direction — gapped up into OR high = more trapped longs (0–10)
-    # Thresholds from config.yaml → orf.c3_gap_*
+    # C3: Gap direction â gapped up into OR high = more trapped longs (0â10)
+    # Thresholds from config.yaml â orf.c3_gap_*
     gap_pct = candidate.get("gap_pct", 0)
     s3_t1 = _o("c3_gap_10", 30)
     s3_t2 = _o("c3_gap_9",  20)
@@ -350,10 +350,10 @@ def score_orf(candidate: dict) -> dict:
     elif gap_pct >= s3_t3:      c3 = 7
     elif gap_pct >= s3_t4:      c3 = 5
     elif gap_pct >= s3_t5:      c3 = 3
-    else:                        c3 = 1  # gapped down — fade still possible but weaker
+    else:                        c3 = 1  # gapped down â fade still possible but weaker
 
-    # C4: OR volume vs average — high volume spike = more trapped buyers (0–10)
-    # By 9:45 AM, expect ~4% of daily volume. Thresholds from config.yaml → orf.c4_vol_pct_*
+    # C4: OR volume vs average â high volume spike = more trapped buyers (0â10)
+    # By 9:45 AM, expect ~4% of daily volume. Thresholds from config.yaml â orf.c4_vol_pct_*
     vol = candidate.get("volume") or 0
     avg_vol = candidate.get("avg_daily_volume") or 0
     s4_t1 = _o("c4_vol_pct_10", 30) / 100
@@ -370,10 +370,10 @@ def score_orf(candidate: dict) -> dict:
     else:
         c4 = 3  # unknown volume
 
-    # C5: Catalyst check — manual, placeholder 5/10
+    # C5: Catalyst check â manual, placeholder 5/10
     c5 = 5
 
-    # C6: Rejection quality — how far above OR high did price go before coming back?
+    # C6: Rejection quality â how far above OR high did price go before coming back?
     # More overshoot = weaker buyers = better fade
     move_pct = candidate.get("move_from_open_pct", 0)
     or_size_p = candidate.get("or_size_pct", 1) or 1
@@ -496,7 +496,7 @@ def _send_telegram(message: str) -> None:
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
-        print("  [Telegram] Env vars not set — skipping.")
+        print("  [Telegram] Env vars not set â skipping.")
         return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
@@ -506,15 +506,15 @@ def _send_telegram(message: str) -> None:
             timeout=15,
         )
         resp.raise_for_status()
-        print("  [Telegram] ✅ Message sent.")
+        print("  [Telegram] â Message sent.")
     except Exception as e:
-        print(f"  [Telegram] ✗ Failed: {e}")
+        print(f"  [Telegram] â Failed: {e}")
 
 
 def _send_scan_alert(a_plus: list, monitor: list) -> None:
     """Send Telegram alert for scan results. Silent if nothing qualifies."""
     if not a_plus and not monitor:
-        print("  [Telegram] No qualifying ORF setups — skipping notification.")
+        print("  [Telegram] No qualifying ORF setups â skipping notification.")
         return
 
     now_str = _fmt_et_sgt()
@@ -522,14 +522,14 @@ def _send_scan_alert(a_plus: list, monitor: list) -> None:
     if not a_plus:
         # Monitor only
         lines = [
-            f"👀 *ORF Scanner — {now_str}*",
+            f"ð *ORF Scanner â {now_str}*",
             f"{len(monitor)} Monitor setup(s), no A+.",
             "",
         ]
         for c in monitor[:3]:
             t = c.get("trade", {})
             lines.append(
-                f"  • *{c['ticker']}*  OR: ${c['or_low']}–${c['or_high']} "
+                f"  â¢ *{c['ticker']}*  OR: ${c['or_low']}â${c['or_high']} "
                 f"({c['or_size_pct']}%)  Score: {c['total_score']}/60"
             )
         lines.append("\n_Watch for breakdown below OR high. No entry yet._")
@@ -537,33 +537,33 @@ def _send_scan_alert(a_plus: list, monitor: list) -> None:
         return
 
     lines = [
-        f"🚨 *ORF ALERT* — {now_str}",
-        f"*{len(a_plus)} A+ setup(s)* — Opening Range Fade",
+        f"ð¨ *ORF ALERT* â {now_str}",
+        f"*{len(a_plus)} A+ setup(s)* â Opening Range Fade",
         "",
     ]
     for c in a_plus:
         t = c.get("trade", {})
         sc = c.get("scores", {})
         lines += [
-            f"📉 *{c['ticker']}*  |  Score: {c['total_score']}/60  |  Tier: A+",
-            f"  OR: ${c['or_low']} – ${c['or_high']} ({c['or_size_pct']}% range)",
+            f"ð *{c['ticker']}*  |  Score: {c['total_score']}/60  |  Tier: A+",
+            f"  OR: ${c['or_low']} â ${c['or_high']} ({c['or_size_pct']}% range)",
             f"  Gap from prev close: +{c.get('gap_pct', 0):.1f}%  |  Move from open: +{c.get('move_from_open_pct', 0):.1f}%",
             f"  Entry (short at OR high breakdown): ${t.get('entry', '?')}",
             f"  Stop: ${t.get('stop', '?')} (+{STOP_PCT*100:.0f}% above OR high)",
             f"  Target 1 (OR low): ${t.get('target1', '?')}  |  Target 2 (prev close): ${t.get('target2', '?')}",
             f"  Shares: {t.get('shares', '?')}  |  Risk: ${t.get('risk_usd', '?')}  |  R/R: {t.get('rr_ratio', '?')}:1",
-            f"  🔗 Reddit: https://www.reddit.com/search/?q={c['ticker']}",
-            f"  🔗 Stocktwits: https://stocktwits.com/symbol/{c['ticker']}",
+            f"  ð Reddit: https://www.reddit.com/search/?q={c['ticker']}",
+            f"  ð Stocktwits: https://stocktwits.com/symbol/{c['ticker']}",
             "",
         ]
     if monitor:
-        lines.append(f"👀 Also watching: {', '.join(c['ticker'] for c in monitor[:5])}")
+        lines.append(f"ð Also watching: {', '.join(c['ticker'] for c in monitor[:5])}")
         lines.append("")
     lines += [
-        "⚠️ *Enter SHORT only when price closes back BELOW OR high.*",
-        "⚠️ *Verify catalyst is hollow (Reddit/Stocktwits).*",
-        f"⚠️ *Time stop: {TIME_STOP_SGT} / {TIME_STOP_ET}.*",
-        "🚫 *If catalyst is M&A / FDA / earnings — DO NOT TRADE.*",
+        "â ï¸ *Enter SHORT only when price closes back BELOW OR high.*",
+        "â ï¸ *Verify catalyst is hollow (Reddit/Stocktwits).*",
+        f"â ï¸ *Time stop: {TIME_STOP_SGT} / {TIME_STOP_ET}.*",
+        "ð« *If catalyst is M&A / FDA / earnings â DO NOT TRADE.*",
     ]
     _send_telegram("\n".join(lines))
 
@@ -577,7 +577,7 @@ def mode_scan():
     9:45 AM ET: Scan for opening range movers, score them, record OR levels.
     """
     print(f"\n{'='*60}")
-    print(f"  ORF SCANNER — OPENING RANGE SCAN — {_fmt_et_sgt()}")
+    print(f"  ORF SCANNER â OPENING RANGE SCAN â {_fmt_et_sgt()}")
     print(f"{'='*60}")
 
     movers = fetch_opening_range_movers()
@@ -601,20 +601,20 @@ def mode_scan():
     print(f"\n  RESULTS: {len(a_plus)} A+ | {len(monitor)} Monitor | {len(scored)-len(a_plus)-len(monitor)} Skip")
 
     if a_plus:
-        print("\n🔥 A+ SETUPS:")
+        print("\nð¥ A+ SETUPS:")
         for c in a_plus:
             sc = c.get("scores", {})
             t = c.get("trade", {})
-            print(f"\n  {c['ticker']}  Score:{c['total_score']}/60  OR:${c['or_low']}–${c['or_high']} ({c['or_size_pct']}%)")
+            print(f"\n  {c['ticker']}  Score:{c['total_score']}/60  OR:${c['or_low']}â${c['or_high']} ({c['or_size_pct']}%)")
             print(f"  C1:{sc.get('c1_prior_trend')} C2:{sc.get('c2_or_size')} C3:{sc.get('c3_gap_direction')} "
                   f"C4:{sc.get('c4_or_volume')} C5:{sc.get('c5_catalyst_MANUAL')}(manual) C6:{sc.get('c6_rejection_quality')}")
             print(f"  Entry:${t.get('entry')} Stop:${t.get('stop')} T1:${t.get('target1')} T2:${t.get('target2')}")
             print(f"  Shares:{t.get('shares')} Risk:${t.get('risk_usd')} R/R:{t.get('rr_ratio')}:1")
 
     if monitor:
-        print("\n👀 MONITOR:")
+        print("\nð MONITOR:")
         for c in monitor[:5]:
-            print(f"  {c['ticker']:6s}  OR:${c['or_low']}–${c['or_high']} ({c['or_size_pct']}%)  Score:{c['total_score']}/60")
+            print(f"  {c['ticker']:6s}  OR:${c['or_low']}â${c['or_high']} ({c['or_size_pct']}%)  Score:{c['total_score']}/60")
 
     # Save state
     state = _load_state()
@@ -637,12 +637,12 @@ def mode_scan():
 
 def mode_monitor():
     """
-    10:00–10:45 AM ET: Check if any A+/Monitor candidates have broken below OR high.
-    If breakdown confirmed → enter paper short, notify via Telegram.
+    10:00â10:45 AM ET: Check if any A+/Monitor candidates have broken below OR high.
+    If breakdown confirmed â enter paper short, notify via Telegram.
     Also check exit conditions for already-open positions.
     """
     print(f"\n{'='*60}")
-    print(f"  ORF SCANNER — MONITORING — {_fmt_et_sgt()}")
+    print(f"  ORF SCANNER â MONITORING â {_fmt_et_sgt()}")
     print(f"{'='*60}")
 
     state = _load_state()
@@ -650,7 +650,7 @@ def mode_monitor():
 
     candidates = state.get("candidates", {})
     if not candidates:
-        print("  No ORF candidates in state — run scan first.")
+        print("  No ORF candidates in state â run scan first.")
         return
 
     # --- Check for new breakdown entries ---
@@ -672,7 +672,7 @@ def mode_monitor():
             candidate["breakdown_triggered"] = True
             candidate["breakdown_price"] = price
             candidate["breakdown_time_et"] = _fmt(_now_et())
-            print(f"  ✅ [{ticker}] BREAKDOWN @ ${price} (OR high was ${or_high})")
+            print(f"  â [{ticker}] BREAKDOWN @ ${price} (OR high was ${or_high})")
 
             # Open paper position if not already open
             if ticker not in trades["positions"]:
@@ -681,16 +681,16 @@ def mode_monitor():
 
                 t = candidate.get("trade", {})
                 _send_telegram(
-                    f"📉 *ORF Breakdown — {ticker}*\n"
+                    f"ð *ORF Breakdown â {ticker}*\n"
                     f"_{_fmt_et_sgt()}_\n\n"
-                    f"Broke below OR high ${or_high} → now at *${price}*\n"
+                    f"Broke below OR high ${or_high} â now at *${price}*\n"
                     f"Paper short entered @ ${price}\n"
                     f"Stop: ${t.get('stop', '?')}  |  T1: ${t.get('target1', '?')}  |  T2: ${t.get('target2', '?')}\n"
                     f"Shares: {t.get('shares', '?')}  |  Risk: ${t.get('risk_usd', '?')}\n"
-                    f"⚠️ *Verify catalyst before real entry!*"
+                    f"â ï¸ *Verify catalyst before real entry!*"
                 )
         else:
-            print(f"  [{ticker}] Still above OR high @ ${price} — no breakdown yet.")
+            print(f"  [{ticker}] Still above OR high @ ${price} â no breakdown yet.")
 
         time.sleep(0.5)
 
@@ -705,10 +705,10 @@ def mode_monitor():
 
 def mode_close():
     """
-    11:00 AM ET: Time stop — force-close all open ORF positions.
+    11:00 AM ET: Time stop â force-close all open ORF positions.
     """
     print(f"\n{'='*60}")
-    print(f"  ORF SCANNER — TIME STOP CLOSE — {_fmt_et_sgt()}")
+    print(f"  ORF SCANNER â TIME STOP CLOSE â {_fmt_et_sgt()}")
     print(f"{'='*60}")
 
     trades = _load_trades()
@@ -722,15 +722,15 @@ def mode_close():
         price = fetch_current_price(ticker) or position.get("last_price") or position["entry_price"]
         c = _close_position(position, price, "TIME_STOP", trades)
         closed.append(c)
-        emoji = "✅" if c["outcome"] == "WIN" else "❌"
+        emoji = "â" if c["outcome"] == "WIN" else "â"
         print(f"  {emoji} [{ticker}] Closed @ ${price} | P&L: ${c['pnl_usd']} ({c['pnl_pct']}%)")
 
     _save_trades(trades)
 
     if closed:
-        lines = [f"⏱️ *ORF Time Stop — {TIME_STOP_SGT}*", f"_{_fmt_et_sgt()}_", ""]
+        lines = [f"â±ï¸ *ORF Time Stop â {TIME_STOP_SGT}*", f"_{_fmt_et_sgt()}_", ""]
         for c in closed:
-            emoji = "✅" if c["outcome"] == "WIN" else "❌"
+            emoji = "â" if c["outcome"] == "WIN" else "â"
             lines.append(f"{emoji} *{c['ticker']}* @ ${c['exit_price']} | P&L: ${c['pnl_usd']} ({c['pnl_pct']}%)")
         _send_telegram("\n".join(lines))
 
@@ -740,7 +740,7 @@ def mode_summary():
     11:30 AM ET: Send full P&L summary for the ORF session.
     """
     print(f"\n{'='*60}")
-    print(f"  ORF SCANNER — SESSION SUMMARY — {_fmt_et_sgt()}")
+    print(f"  ORF SCANNER â SESSION SUMMARY â {_fmt_et_sgt()}")
     print(f"{'='*60}")
 
     trades = _load_trades()
@@ -768,9 +768,9 @@ def mode_summary():
     print(f"  Trades:{len(closed)} Wins:{len(wins)} Losses:{len(losses)} Win Rate:{win_rate}%")
     print(f"  Total P&L: ${total_pnl} | Avg Win: ${avg_win} | Avg Loss: ${avg_loss}")
 
-    result_emoji = "🟢" if total_pnl > 0 else "🔴" if total_pnl < 0 else "⚪"
+    result_emoji = "ð¢" if total_pnl > 0 else "ð´" if total_pnl < 0 else "âª"
     lines = [
-        f"📊 *ORF Summary — {_fmt_et_sgt()}*",
+        f"ð *ORF Summary â {_fmt_et_sgt()}*",
         "",
         f"{result_emoji} *Total P&L: ${total_pnl}* | Win Rate: {win_rate}%",
         f"Trades: {len(closed)} | Wins: {len(wins)} | Losses: {len(losses)}",
@@ -778,10 +778,10 @@ def mode_summary():
         "",
     ]
     for c in closed:
-        emoji = "✅" if c["outcome"] == "WIN" else "❌"
+        emoji = "â" if c["outcome"] == "WIN" else "â"
         lines.append(
             f"{emoji} *{c['ticker']}*  {c['exit_reason']}  "
-            f"${c['entry_price']} → ${c['exit_price']}  P&L: ${c['pnl_usd']} ({c['pnl_pct']}%)"
+            f"${c['entry_price']} â ${c['exit_price']}  P&L: ${c['pnl_usd']} ({c['pnl_pct']}%)"
         )
     lines += ["", "_Paper trading only. No real money involved._"]
 
@@ -833,7 +833,7 @@ def _open_single_paper_position(candidate: dict, entry_price: float, trades: dic
         "price_history": [{"price": entry_price, "time_et": _fmt(_now_et())}],
     }
     trades["positions"][ticker] = position
-    print(f"  📋 [{ticker}] Paper short opened @ ${entry_price} | Stop:${t.get('stop')} T1:${t.get('target1')}")
+    print(f"  ð [{ticker}] Paper short opened @ ${entry_price} | Stop:${t.get('stop')} T1:${t.get('target1')}")
 
 
 def _monitor_open_positions(trades: dict) -> None:
@@ -854,13 +854,13 @@ def _monitor_open_positions(trades: dict) -> None:
         if price >= position["stop_loss"]:
             c = _close_position(position, price, "STOP_LOSS", trades)
             _send_telegram(
-                f"❌ *ORF Stop Loss — {ticker}*\n"
+                f"â *ORF Stop Loss â {ticker}*\n"
                 f"Exit @ ${price} | P&L: ${c['pnl_usd']} ({c['pnl_pct']}%)"
             )
         elif price <= position["target1"]:
             c = _close_position(position, price, "TARGET_1", trades)
             _send_telegram(
-                f"✅ *ORF Target Hit — {ticker}*\n"
+                f"â *ORF Target Hit â {ticker}*\n"
                 f"T1 @ ${price} | P&L: ${c['pnl_usd']} ({c['pnl_pct']}%)"
             )
 
