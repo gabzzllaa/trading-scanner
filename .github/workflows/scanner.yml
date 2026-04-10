@@ -219,6 +219,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PYTHONIOENCODING: utf-8
         run: |
           python scanner/scanner.py --mode ${{ steps.mode.outputs.scanner_mode }}
 
@@ -227,6 +228,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PYTHONIOENCODING: utf-8
         run: |
           python scanner/paper_trader.py --mode ${{ steps.mode.outputs.paper_mode }}
 
@@ -235,6 +237,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PYTHONIOENCODING: utf-8
         run: |
           python scanner/orf_scanner.py --mode ${{ steps.mode.outputs.orf_mode }}
 
@@ -243,6 +246,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PYTHONIOENCODING: utf-8
         run: |
           python scanner/earnings_scanner.py --mode ${{ steps.mode.outputs.earnings_mode }}
 
