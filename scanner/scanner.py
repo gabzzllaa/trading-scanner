@@ -887,9 +887,9 @@ def send_telegram_alert(candidates: list[dict], total_gappers: int = 0) -> None:
         print("  [Telegram] TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set — skipping.")
         return
 
-    # Only include shortable or borrow-unknown candidates — skip confirmed no-borrow
-    a_plus    = [c for c in candidates if c.get("tier") == "A+" and c.get("shortable") is not False]
-    monitor   = [c for c in candidates if c.get("tier") == "Monitor" and c.get("shortable") is not False]
+    # Only include confirmed-shortable candidates — skip no-borrow AND unknown
+    a_plus    = [c for c in candidates if c.get("tier") == "A+" and c.get("shortable") is True]
+    monitor   = [c for c in candidates if c.get("tier") == "Monitor" and c.get("shortable") is True]
     no_borrow = [c for c in candidates if c.get("tier") == "No Borrow"]
     now_str   = f"{_utc_to_et_str()} / {_utc_to_sgt_str()}"
 
@@ -1176,8 +1176,8 @@ def run_morning_mode():
     # Save results
     _save_scan(scored, "morning")
 
-    # Telegram alert — only pass shortable or unknown candidates (exclude confirmed no-borrow)
-    alertable = [s for s in scored if s.get("tier") != "No Borrow"]
+    # Telegram alert — only confirmed shortable candidates (exclude no-borrow AND unknown)
+    alertable = [s for s in scored if s.get("shortable") is True]
     send_telegram_alert(alertable, total_gappers=len(all_gappers))
 
     return scored
