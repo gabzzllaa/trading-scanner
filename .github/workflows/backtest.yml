@@ -1,0 +1,121 @@
+name: Backtest
+
+on:
+  # Run every Sunday at 10:00 AM SGT = 02:00 UTC
+  schedule:
+    - cron: '0 2 * * 0'
+
+  # Manual trigger — can run anytime
+  workflow_dispatch:
+    inputs:
+      agent:
+        description: 'Which agent to backtest'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - '1'
+          - '2'
+          - '3'
+
+env:
+  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+  TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    # No timeout limit — let it run until done
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r scanner/requirements.txt
+
+      - name: Write config.yaml
+        run: |
+          cat > config.yaml << 'EOF'
+          capital_usd: 10000
+          risk_per_trade_pct: 0.0100
+          max_daily_loss_pct: 0.0200
+          time_stop_et: "10:30 AM ET"
+          time_stop_sgt: "10:30 PM SGT"
+          market_open_et: "9:30 AM ET"
+          market_open_sgt: "9:30 PM SGT"
+          telegram_enabled: true
+          data_dir: scanner/data
+          watchlist_file: scanner/data/watchlist.json
+          latest_scan_file: scanner/data/latest_scan.json
+          history_dir: scanner/data/history
+          finviz_rate_min_s: 0.8
+          finviz_rate_max_s: 1.5
+          alpaca_api_key: "${{ secrets.ALPACA_API_KEY }}"
+          alpaca_secret_key: "${{ secrets.ALPACA_SECRET_KEY }}"
+          bagholder:
+            tier_a_plus_min: 35
+            tier_monitor_min: 20
+            stop_loss_pct: 0.10
+            c1_decline_10: 80
+            c1_decline_9:  60
+            c1_decline_7:  50
+            c1_decline_4:  40
+            c1_decline_2:  30
+            c2_price_5:    1
+            c2_price_4:    3
+            c2_price_3:    5
+            c2_price_2:    10
+            c2_mktcap_5:   50
+            c2_mktcap_4:   200
+            c2_mktcap_3:   500
+            c2_mktcap_2:   1000
+            c2_mktcap_1:   2000
+            c3_short_10:   30
+            c3_short_8:    20
+            c3_short_7:    15
+            c3_short_6:    10
+            c3_short_3:    5
+            c4_gap_10:     100
+            c4_gap_9:      75
+            c4_gap_8:      50
+            c4_gap_7:      40
+            c4_gap_6:      30
+            c4_gap_3:      20
+            c6_vol_10:     20
+            c6_vol_9:      15
+            c6_vol_8:      10
+            c6_vol_7:      7
+            c6_vol_6:      5
+            c6_vol_4:      3
+            c6_vol_2:      2
+            watchlist_max_price: 10
+            watchlist_min_short_float: 10
+            watchlist_max_perf_6m: -30
+            watchlist_min_avg_vol: 100000
+            watchlist_max_stocks: 80
+            watchlist_stale_days: 7
+          EOF
+
+      - name: Run backtest
+        run: |
+          AGENT="${{ github.event.inputs.agent || 'all' }}"
+          echo "Running backtest for agent: $AGENT"
+          python scanner/backtest.py --agent $AGENT
+
+      - name: Save backtest results to repo
+        run: |
+          git config user.name "Trading Bot"
+          git config user.email "bot@trading-scanner"
+          git add scanner/data/backtest_*.json || true
+          git diff --cached --quiet || git commit -m "data: backtest results $(date -u +%Y-%m-%d)"
+          git push || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
