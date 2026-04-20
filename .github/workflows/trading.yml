@@ -26,8 +26,8 @@ on:
     # 22:30 SGT = 14:30 UTC — Time stop close
     - cron: '30 14 * * 1-5'
 
-    # 23:00 SGT = 15:00 UTC — Summary
-    - cron: '0 15 * * 1-5'
+    # 04:30 SGT next day = 20:30 UTC — Summary (after US market close at 4 PM ET)
+    - cron: '30 20 * * 1-5'
 
   workflow_dispatch:
     inputs:
@@ -150,7 +150,7 @@ jobs:
             echo "mode=monitor" >> $GITHUB_OUTPUT
           elif [[ "$TIME" == "14:30" || "$TIME" == "14:3"* ]]; then
             echo "mode=close" >> $GITHUB_OUTPUT
-          elif [[ "$TIME" == "15:00" || "$TIME" == "15:0"* ]]; then
+          elif [[ "$TIME" == "20:30" || "$TIME" == "20:3"* ]]; then
             echo "mode=summary" >> $GITHUB_OUTPUT
           else
             echo "mode=summary" >> $GITHUB_OUTPUT
@@ -185,8 +185,4 @@ jobs:
         run: |
           git config user.name "Trading Bot"
           git config user.email "bot@trading-scanner"
-          git add scanner/data/latest_scan.json scanner/data/history/ || true
-          git diff --cached --quiet || git commit -m "data: scan results $(date -u +%Y-%m-%d)"
-          git push || true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git add scanner/data/latest_scan.json scanner/data/history/ || true
