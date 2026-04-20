@@ -2,6 +2,9 @@
 .env
 *.env
 
+# Config with API keys - never commit
+config.yaml
+
 # Finviz debug file
 finviz_test.html
 

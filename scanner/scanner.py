@@ -1125,8 +1125,8 @@ def run_morning_mode():
             info = short_map.get(s["ticker"], {"shortable": None, "fee_pct": None})
             s["shortable"] = info.get("shortable")       # True / False / None
             s["borrow_fee_pct"] = info.get("fee_pct")    # annualised %, or None
-            # Downgrade to "No Borrow" if confirmed not shortable — no point trading
-            if s.get("shortable") is False and s.get("tier") in ("A+", "Monitor"):
+            # Downgrade to "No Borrow" if not confirmed shortable (False = no borrow, None = unknown)
+            if s.get("shortable") is not True and s.get("tier") in ("A+", "Monitor"):
                 s["tier_original"] = s["tier"]
                 s["tier"] = "No Borrow"
     else:

@@ -680,6 +680,31 @@ def _record_close(state: dict, ticker: str, exit_price: float, reason: str) -> N
     del state["positions"][ticker]
 
 # ---------------------------------------------------------------------------
+# Cumulative P&L — reads all history files for an agent
+# ---------------------------------------------------------------------------
+
+def _cumulative_pnl(agent_id: int) -> dict:
+    """Sum P&L across all archived history files for this agent."""
+    total = 0.0
+    total_trades = 0
+    total_wins = 0
+    for f in sorted(HISTORY_DIR.glob(f"agent{agent_id}_*.json")):
+        try:
+            data = json.loads(f.read_text())
+            for t in data.get("closed_trades", []):
+                total += float(t.get("pnl_usd", 0))
+                total_trades += 1
+                if t.get("outcome") == "WIN":
+                    total_wins += 1
+        except Exception:
+            continue
+    return {
+        "cumulative_pnl":    round(total, 2),
+        "cumulative_trades": total_trades,
+        "cumulative_wins":   total_wins,
+    }
+
+# ---------------------------------------------------------------------------
 # MODE: summary
 # ---------------------------------------------------------------------------
 
@@ -697,55 +722,102 @@ def mode_summary(agent_id: int) -> None:
         print("  ⚠️  Unclosed positions found — force-closing.")
         _close_all(agent_id, state)
 
-    closed = state["closed_trades"]
-    if not closed:
-        msg = (
-            f"📊 *Agent {agent_id} ({source}) — Summary*\n"
-            f"_{_fmt_et_sgt()}_\n\n"
-            f"No trades taken today."
-        )
-        print("  No trades today.")
-        _send_telegram(msg)
-        _save_state(agent_id, state)
-        return
+    # Fetch live open positions from Alpaca
+    try:
+        live_positions = {p["symbol"]: p for p in get_positions()}
+    except Exception:
+        live_positions = {}
 
-    total_pnl  = round(sum(c["pnl_usd"] for c in closed), 2)
+    closed = state["closed_trades"]
+    cumul  = _cumulative_pnl(agent_id)
+
+    # --- Today's P&L ---
+    today_pnl  = round(sum(c["pnl_usd"] for c in closed), 2)
     wins       = [c for c in closed if c["outcome"] == "WIN"]
     losses     = [c for c in closed if c["outcome"] == "LOSS"]
     win_rate   = round(len(wins) / len(closed) * 100, 1) if closed else 0
     avg_win    = round(sum(c["pnl_usd"] for c in wins) / len(wins), 2) if wins else 0
     avg_loss   = round(sum(c["pnl_usd"] for c in losses) / len(losses), 2) if losses else 0
 
-    print(f"\n  Trades:{len(closed)}  Wins:{len(wins)}  Losses:{len(losses)}  WinRate:{win_rate}%")
-    print(f"  Total P&L: ${total_pnl}  Avg Win: ${avg_win}  Avg Loss: ${avg_loss}")
+    # Include today in cumulative
+    cumul_total = round(cumul["cumulative_pnl"] + today_pnl, 2)
+    cumul_trades = cumul["cumulative_trades"] + len(closed)
+    cumul_wins   = cumul["cumulative_wins"] + len(wins)
+    cumul_win_rate = round(cumul_wins / cumul_trades * 100, 1) if cumul_trades else 0
+
+    print(f"\n  Today — Trades:{len(closed)}  Wins:{len(wins)}  Losses:{len(losses)}  WinRate:{win_rate}%")
+    print(f"  Today P&L: ${today_pnl}  |  Cumulative P&L: ${cumul_total}")
     for c in closed:
         emoji = "✅" if c["outcome"] == "WIN" else "❌"
         print(f"  {emoji} {c['ticker']:6s}  ${c.get('entry_price','?')} → ${c['exit_price']}  "
               f"P&L:${c['pnl_usd']} ({c['pnl_pct']}%)  [{c['exit_reason']}]")
 
-    result_emoji = "🟢" if total_pnl > 0 else "🔴" if total_pnl < 0 else "⚪"
+    today_emoji = "🟢" if today_pnl > 0 else "🔴" if today_pnl < 0 else "⚪"
+    cumul_emoji = "🟢" if cumul_total > 0 else "🔴" if cumul_total < 0 else "⚪"
+
     lines = [
-        f"📊 *Agent {agent_id} ({source}) — Session Summary*",
+        f"📊 *Agent {agent_id} ({source}) — Daily Report*",
         f"_{_fmt_et_sgt()}_",
         "",
-        f"{result_emoji} *Total P&L: ${total_pnl}*  |  Win Rate: {win_rate}%",
+        f"━━━ TODAY ━━━",
+        f"{today_emoji} *Day P&L: ${today_pnl}*  |  Win Rate: {win_rate}%",
         f"Trades: {len(closed)}  |  Wins: {len(wins)}  |  Losses: {len(losses)}",
         f"Avg Win: ${avg_win}  |  Avg Loss: ${avg_loss}",
-        "",
     ]
-    for c in closed:
-        emoji = "✅" if c["outcome"] == "WIN" else "❌"
-        lines.append(
-            f"{emoji} *{c['ticker']}*  {c['exit_reason']}  "
-            f"${c.get('entry_price','?')} → ${c['exit_price']}  "
-            f"${c['pnl_usd']} ({c['pnl_pct']}%)"
-        )
-    lines += ["", "_Paper trading — Alpaca paper account. No real money._"]
+
+    # Today's closed trades breakdown
+    if closed:
+        lines.append("")
+        for c in closed:
+            emoji = "✅" if c["outcome"] == "WIN" else "❌"
+            lines.append(
+                f"{emoji} *{c['ticker']}*  {c['exit_reason']}\n"
+                f"   ${c.get('entry_price','?')} → ${c['exit_price']}  "
+                f"P&L: *${c['pnl_usd']}* ({c['pnl_pct']}%)"
+            )
+    else:
+        lines.append("_No trades taken today._")
+
+    # Live open positions
+    lines += ["", "━━━ OPEN POSITIONS ━━━"]
+    if live_positions:
+        for symbol, p in live_positions.items():
+            entry      = float(p.get("avg_entry_price", 0))
+            current    = float(p.get("current_price", 0))
+            unreal_pnl = float(p.get("unrealized_pl", 0))
+            unreal_pct = float(p.get("unrealized_plpc", 0)) * 100
+            qty        = p.get("qty", "?")
+            side       = p.get("side", "?")
+            pos_emoji  = "📈" if unreal_pnl >= 0 else "📉"
+            lines.append(
+                f"{pos_emoji} *{symbol}*  {side} {qty} shares\n"
+                f"   Entry: ${entry}  |  Now: ${current}\n"
+                f"   Unrealized P&L: *${unreal_pnl:.2f}* ({unreal_pct:.2f}%)"
+            )
+    else:
+        lines.append("_No open positions._")
+
+    # Cumulative P&L
+    lines += [
+        "",
+        "━━━ CUMULATIVE (ALL TIME) ━━━",
+        f"{cumul_emoji} *Total P&L: ${cumul_total}*  |  Win Rate: {cumul_win_rate}%",
+        f"Total Trades: {cumul_trades}  |  Total Wins: {cumul_wins}",
+        "",
+        "_Paper trading — Alpaca paper account. No real money._",
+    ]
 
     state["summary"] = {
-        "total_pnl": total_pnl, "trades": len(closed),
-        "wins": len(wins), "losses": len(losses),
-        "win_rate": win_rate, "avg_win": avg_win, "avg_loss": avg_loss,
+        "today_pnl":      today_pnl,
+        "trades":         len(closed),
+        "wins":           len(wins),
+        "losses":         len(losses),
+        "win_rate":       win_rate,
+        "avg_win":        avg_win,
+        "avg_loss":       avg_loss,
+        "cumulative_pnl": cumul_total,
+        "cumulative_trades": cumul_trades,
+        "cumulative_win_rate": cumul_win_rate,
     }
     _save_state(agent_id, state)
     _archive_state(agent_id, state)
@@ -761,30 +833,4 @@ def main():
     parser.add_argument("--agent", required=True,
                         help="Agent number: 1, 2, 3, or 'all'")
     parser.add_argument("--mode", required=True,
-                        choices=["premarket", "open", "monitor", "close", "summary"],
-                        help="Phase to run")
-    args = parser.parse_args()
-
-    if not ALPACA_API_KEY or not ALPACA_SECRET_KEY:
-        print("❌ Alpaca API keys not found in config.yaml")
-        sys.exit(1)
-
-    agent_ids = [1, 2, 3] if args.agent == "all" else [int(args.agent)]
-
-    mode_fn = {
-        "premarket": mode_premarket,
-        "open":      mode_open,
-        "monitor":   mode_monitor,
-        "close":     mode_close,
-        "summary":   mode_summary,
-    }[args.mode]
-
-    for agent_id in agent_ids:
-        try:
-            mode_fn(agent_id)
-        except Exception as e:
-            print(f"❌ Agent {agent_id} crashed: {e}")
-            import traceback; traceback.print_exc()
-
-if __name__ == "__main__":
-    main()
+                        choices=["premarket", "open", "monitor", "

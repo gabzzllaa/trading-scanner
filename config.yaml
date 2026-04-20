@@ -28,6 +28,9 @@ history_dir: scanner/data/history
 finviz_rate_min_s: 0.8
 finviz_rate_max_s: 1.5
 
+alpaca_api_key: "PKNZHSIFZ4Z7YL74CDJDDRQF5S"
+alpaca_secret_key: "EtKMNgTUg19vDf7fwDsaLG8P9UwwggCA3Es8zPW6tW8P"
+
 
 # ════════════════════════════════════════════
 # AGENT 1 — Bagholder Exit Liquidity Pattern
