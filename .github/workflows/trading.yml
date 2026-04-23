@@ -156,6 +156,10 @@ jobs:
             echo "mode=summary" >> $GITHUB_OUTPUT
           fi
 
+      - name: Daily health check
+        if: steps.mode.outputs.mode == 'scanner'
+        run: python scanner/healthcheck.py || true
+
       - name: Run morning scanner
         if: steps.mode.outputs.mode == 'scanner'
         run: python scanner/scanner.py --mode morning
