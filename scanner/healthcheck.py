@@ -348,26 +348,36 @@ def run_healthcheck() -> bool:
     if critical_failures:
         print(f"  CRITICAL failures: {[r['name'] for r in critical_failures]}")
 
-    # Build Telegram message
-    now_str = _fmt_et_sgt()
+    # Build Telegram message — always send so silence = system down, not healthy
+    now_str    = _fmt_et_sgt()
+    ok_count   = len(results) - fail_count
+    total      = len(results)
+
     if all_ok:
-        lines = [f"*Health Check* - {now_str}", "All data sources reachable."]
+        lines = [
+            f"*Daily Health Check* - {now_str}",
+            f"All {total} sources OK. Scanners ready.",
+            "",
+            f"Scanner runs in ~1 min. Next: 9:30 PM SGT market open.",
+        ]
     else:
         fail_names = ", ".join(r["name"] for r in failures)
         if critical_failures:
-            lines = [
-                f"*Health Check ALERT* - {now_str}",
-                f"{fail_count} source(s) unreachable: {fail_names}",
-                "Scanner alerts may not fire today.",
-            ]
+            header = f"*Health Check ALERT* - {now_str}"
+            footer = "Scanner alerts may not fire today."
         else:
-            lines = [
-                f"*Health Check* - {now_str}",
-                f"{fail_count} source(s) unreachable: {fail_names}",
-            ]
-        lines.append("")
+            header = f"*Health Check* - {now_str}"
+            footer = "Non-critical sources down — scanner will still run."
+
+        lines = [
+            header,
+            f"{ok_count}/{total} sources OK.",
+            f"{fail_count} unreachable: {fail_names}",
+            "",
+        ]
         for r in failures:
             lines.append(f"- *{r['name']}*: {r['detail']}")
+        lines += ["", footer]
 
     _send_telegram("\n".join(lines))
     return all_ok
