@@ -3,18 +3,18 @@ name: Trading Pipeline
 on:
   schedule:
     # All times UTC. SGT = UTC+8, ET = UTC-4 (EDT) / UTC-5 (EST)
-    # US market hours: 9:30–10:30 AM ET = 13:30–14:30 UTC (EDT)
+    # US market hours: 9:30-10:30 AM ET = 13:30-14:30 UTC (EDT)
 
     # ---- Gap-fade strategy (daily, weekdays) ----
 
-    # 19:30 SGT = 11:30 UTC — Morning scanner (pre-market scan)
+    # 19:30 SGT = 11:30 UTC — Health check + morning scanner (pre-market scan)
     - cron: '30 11 * * 1-5'
 
     # 21:15 SGT = 13:15 UTC — Agents pre-market queue
     - cron: '15 13 * * 1-5'
 
-    # 21:30 SGT = 13:30 UTC — Market open — place orders
-    - cron: '30 13 * * 1-5'
+    # 21:30 SGT = 13:30 UTC — Market open — place orders (Tue-Fri only, Mon handled separately)
+    - cron: '30 13 * * 2-5'
 
     # 21:45 SGT = 13:45 UTC — Monitor 1
     - cron: '45 13 * * 1-5'
@@ -31,18 +31,18 @@ on:
     # 04:30 SGT next day = 20:30 UTC — Summary (after US market close at 4 PM ET)
     - cron: '30 20 * * 1-5'
 
-    # ---- IRS strategy (weekly Sunday + daily Form 4 check) ----
+    # ---- IRS strategy (weekly Sunday + daily Form 4 + Monday entry) ----
 
-    # 22:00 SGT Sunday = 14:00 UTC Sunday — IRS weekly scan
-    - cron: '0 14 * * 0'
+    # 10:00 AM SGT Sunday = 02:00 UTC Sunday — IRS weekly scan (quiet time, no market conflicts)
+    - cron: '0 2 * * 0'
 
-    # 22:30 SGT Sunday = 14:30 UTC Sunday — IRS agent monitor (exit checks)
-    - cron: '30 14 * * 0'
+    # 10:30 AM SGT Sunday = 02:30 UTC Sunday — IRS agent monitor (exit checks)
+    - cron: '30 2 * * 0'
 
-    # 19:00 SGT weekdays = 11:00 UTC — IRS daily Form 4 check
+    # 19:00 SGT weekdays = 11:00 UTC — IRS daily Form 4 check (30 min before scanner)
     - cron: '0 11 * * 1-5'
 
-    # 21:30 SGT Mon = 13:30 UTC Mon — IRS entry orders (Monday only)
+    # 21:30 SGT Monday = 13:30 UTC Monday — IRS entry orders (dedicated Monday slot)
     - cron: '30 13 * * 1'
 
   workflow_dispatch:
@@ -144,38 +144,70 @@ jobs:
             watchlist_min_avg_vol: 100000
             watchlist_max_stocks: 80
             watchlist_stale_days: 7
+          irs:
+            stop_loss_pct: 0.10
+            time_stop_days: 90
+            min_insider_cluster: 2
+            insider_window_days: 30
+            sector_ma_weeks: 10
+            tier_enter_min: 40
+            tier_watch_min: 25
           EOF
 
       - name: Determine mode from schedule
         id: mode
         run: |
-          # Manual trigger
+          # Manual trigger — use input directly
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "mode=${{ inputs.mode }}" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # Determine mode from current UTC hour/minute/day
           HOUR=$(date -u +%H)
           MIN=$(date -u +%M)
-          DOW=$(date -u +%u)   # 1=Mon ... 7=Sun
+          DOW=$(date -u +%u)   # 1=Mon, 2=Tue ... 7=Sun
           TIME="${HOUR}:${MIN}"
 
-          # ---- IRS strategy (Sunday = DOW 7) ----
-          if [[ "$DOW" == "7" && "$TIME" == "14:00" ]]; then
-            echo "mode=irs_weekly" >> $GITHUB_OUTPUT
-          elif [[ "$DOW" == "7" && "$TIME" == "14:30" ]]; then
-            echo "mode=irs_monitor" >> $GITHUB_OUTPUT
+          # ---- Sunday: IRS only (no gap-fade on weekends) ----
+          if [[ "$DOW" == "7" ]]; then
+            if   [[ "$TIME" == "02:00" || "$TIME" == "02:0"* ]]; then
+              echo "mode=irs_weekly" >> $GITHUB_OUTPUT
+            elif [[ "$TIME" == "02:30" || "$TIME" == "02:3"* ]]; then
+              echo "mode=irs_monitor" >> $GITHUB_OUTPUT
+            else
+              echo "mode=noop" >> $GITHUB_OUTPUT
+            fi
+            exit 0
+          fi
 
-          # ---- IRS daily Form 4 check (weekdays 11:00) ----
-          elif [[ "$DOW" != "7" && "$DOW" != "6" && "$TIME" == "11:00" ]]; then
+          # ---- Monday: IRS daily + IRS entry + gap-fade (open handled by dedicated cron) ----
+          if [[ "$DOW" == "1" ]]; then
+            if   [[ "$TIME" == "11:00" || "$TIME" == "11:0"* ]]; then
+              echo "mode=irs_daily" >> $GITHUB_OUTPUT
+            elif [[ "$TIME" == "11:30" || "$TIME" == "11:3"* ]]; then
+              echo "mode=scanner" >> $GITHUB_OUTPUT
+            elif [[ "$TIME" == "13:15" || "$TIME" == "13:1"* ]]; then
+              echo "mode=premarket" >> $GITHUB_OUTPUT
+            elif [[ "$TIME" == "13:30" || "$TIME" == "13:3"* ]]; then
+              # Monday 13:30: run BOTH irs_entry AND gap-fade open
+              # We run irs_entry here; gap-fade open runs via the 2-5 cron (Tue-Fri)
+              # To avoid conflict, Monday open is handled here after irs_entry
+              echo "mode=irs_entry_and_open" >> $GITHUB_OUTPUT
+            elif [[ "$TIME" == "13:45" || "$TIME" == "14:00" || "$TIME" == "14:15" ]]; then
+              echo "mode=monitor" >> $GITHUB_OUTPUT
+            elif [[ "$TIME" == "14:30" || "$TIME" == "14:3"* ]]; then
+              echo "mode=close" >> $GITHUB_OUTPUT
+            elif [[ "$TIME" == "20:30" || "$TIME" == "20:3"* ]]; then
+              echo "mode=summary" >> $GITHUB_OUTPUT
+            else
+              echo "mode=noop" >> $GITHUB_OUTPUT
+            fi
+            exit 0
+          fi
+
+          # ---- Tuesday-Friday: IRS daily + gap-fade ----
+          if   [[ "$TIME" == "11:00" || "$TIME" == "11:0"* ]]; then
             echo "mode=irs_daily" >> $GITHUB_OUTPUT
-
-          # ---- IRS entry orders (Monday only 13:30) ----
-          elif [[ "$DOW" == "1" && ( "$TIME" == "13:30" || "$TIME" == "13:3"* ) ]]; then
-            echo "mode=irs_entry" >> $GITHUB_OUTPUT
-
-          # ---- Gap-fade strategy (weekdays) ----
           elif [[ "$TIME" == "11:30" || "$TIME" == "11:3"* ]]; then
             echo "mode=scanner" >> $GITHUB_OUTPUT
           elif [[ "$TIME" == "13:15" || "$TIME" == "13:1"* ]]; then
@@ -189,8 +221,10 @@ jobs:
           elif [[ "$TIME" == "20:30" || "$TIME" == "20:3"* ]]; then
             echo "mode=summary" >> $GITHUB_OUTPUT
           else
-            echo "mode=summary" >> $GITHUB_OUTPUT
+            echo "mode=noop" >> $GITHUB_OUTPUT
           fi
+
+      # ---- Gap-fade strategy steps ----
 
       - name: Daily health check
         if: steps.mode.outputs.mode == 'scanner'
@@ -205,7 +239,9 @@ jobs:
         run: python scanner/alpaca_agent.py --agent all --mode premarket
 
       - name: Agents — market open orders
-        if: steps.mode.outputs.mode == 'open'
+        if: |
+          steps.mode.outputs.mode == 'open' ||
+          steps.mode.outputs.mode == 'irs_entry_and_open'
         run: python scanner/alpaca_agent.py --agent all --mode open
 
       - name: Agents — monitor positions
@@ -227,25 +263,34 @@ jobs:
         run: python scanner/irs_scanner.py --mode weekly
 
       - name: IRS — daily Form 4 check
-        if: steps.mode.outputs.mode == 'irs_daily'
+        if: |
+          steps.mode.outputs.mode == 'irs_daily' ||
+          steps.mode.outputs.mode == 'irs_entry_and_open'
         run: python scanner/irs_scanner.py --mode daily
 
       - name: IRS — entry orders (Monday)
-        if: steps.mode.outputs.mode == 'irs_entry'
+        if: steps.mode.outputs.mode == 'irs_entry_and_open'
         run: python scanner/irs_agent.py --mode entry
 
       - name: IRS — weekly monitor (exit checks)
         if: steps.mode.outputs.mode == 'irs_monitor'
         run: python scanner/irs_agent.py --mode monitor
 
+      # ---- Save results to repo ----
+
       - name: Save scan data to repo
         if: |
-          steps.mode.outputs.mode == 'scanner' ||
-          steps.mode.outputs.mode == 'summary'  ||
+          steps.mode.outputs.mode == 'scanner'   ||
+          steps.mode.outputs.mode == 'summary'   ||
           steps.mode.outputs.mode == 'irs_weekly' ||
-          steps.mode.outputs.mode == 'irs_daily'
+          steps.mode.outputs.mode == 'irs_daily'  ||
+          steps.mode.outputs.mode == 'irs_entry_and_open'
         run: |
           git config user.name "Trading Bot"
           git config user.email "bot@trading-scanner"
           git add scanner/data/latest_scan.json scanner/data/history/ || true
-          git add scanner/data/irs_watchlist.json scanner/data/irs_state.json scanner/data/irs_positions.json || true
+          git add scanner/data/irs_watchlist.json scanner/data/irs_state.json scanner/data/irs_positions.json || true
+          git diff --cached --quiet || git commit -m "data: scan results $(date -u +%Y-%m-%d)"
+          git push || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
