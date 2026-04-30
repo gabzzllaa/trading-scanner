@@ -397,10 +397,15 @@ def _send_telegram(message: str) -> None:
         print(f"  [Telegram] Failed: {e}")
 
 
-def _send_scan_alert(a_plus: list, monitor: list) -> None:
-    """Send Telegram alert for scan results. Silent if nothing qualifies."""
+def _send_scan_alert(a_plus: list, monitor: list, total_movers: int = 0) -> None:
+    """Send Telegram alert for scan results. Always sends so silence = broken."""
     if not a_plus and not monitor:
-        print("  [Telegram] No qualifying ORF setups - skipping notification.")
+        _send_telegram(
+            f"*ORF Scanner* - {_fmt_et_sgt()}\n"
+            f"{total_movers} opening range mover(s) found — none qualify.\n"
+            "_No ORF setups today. Stand down._"
+        )
+        print("  [Telegram] Sent 'no qualifying setups' confirmation.")
         return
 
     now_str = _fmt_et_sgt()
@@ -511,7 +516,7 @@ def mode_scan():
         json.dump({"scanned_at": state["scanned_at"], "candidates": scored}, f, indent=2, default=str)
 
     # Telegram alert
-    _send_scan_alert(a_plus, monitor)
+    _send_scan_alert(a_plus, monitor, total_movers=len(scored))
 
 
 # ---------------------------------------------------------------------------

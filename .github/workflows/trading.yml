@@ -31,6 +31,16 @@ on:
     # 04:30 SGT next day = 20:30 UTC — Summary (after US market close at 4 PM ET)
     - cron: '30 20 * * 1-5'
 
+    # ---- Earnings Fade scanner (daily, weekdays) ----
+
+    # 20:00 SGT = 12:00 UTC — Earnings Fade scan (8 AM ET pre-market, after earnings releases)
+    - cron: '0 12 * * 1-5'
+
+    # ---- ORF scanner (daily, weekdays) ----
+
+    # 22:05 SGT = 14:05 UTC — ORF scan (10:05 AM ET, after first 15-min opening range)
+    - cron: '5 14 * * 1-5'
+
     # ---- IRS strategy (weekly Sunday + daily Form 4 + Monday entry) ----
 
     # 10:00 AM SGT Sunday = 02:00 UTC Sunday — IRS weekly scan (quiet time, no market conflicts)
@@ -59,6 +69,8 @@ on:
           - monitor
           - close
           - summary
+          - earnings_scan
+          - orf_scan
           - irs_weekly
           - irs_daily
           - irs_entry
@@ -180,21 +192,23 @@ jobs:
             exit 0
           fi
 
-          # ---- Monday: IRS daily + IRS entry + gap-fade (open handled by dedicated cron) ----
+          # ---- Monday: IRS daily + IRS entry + gap-fade + ORF + Earnings ----
           if [[ "$DOW" == "1" ]]; then
             if   [[ "$TIME" == "11:00" || "$TIME" == "11:0"* ]]; then
               echo "mode=irs_daily" >> $GITHUB_OUTPUT
             elif [[ "$TIME" == "11:30" || "$TIME" == "11:3"* ]]; then
               echo "mode=scanner" >> $GITHUB_OUTPUT
+            elif [[ "$TIME" == "12:00" || "$TIME" == "12:0"* ]]; then
+              echo "mode=earnings_scan" >> $GITHUB_OUTPUT
             elif [[ "$TIME" == "13:15" || "$TIME" == "13:1"* ]]; then
               echo "mode=premarket" >> $GITHUB_OUTPUT
             elif [[ "$TIME" == "13:30" || "$TIME" == "13:3"* ]]; then
               # Monday 13:30: run BOTH irs_entry AND gap-fade open
-              # We run irs_entry here; gap-fade open runs via the 2-5 cron (Tue-Fri)
-              # To avoid conflict, Monday open is handled here after irs_entry
               echo "mode=irs_entry_and_open" >> $GITHUB_OUTPUT
             elif [[ "$TIME" == "13:45" || "$TIME" == "14:00" || "$TIME" == "14:15" ]]; then
               echo "mode=monitor" >> $GITHUB_OUTPUT
+            elif [[ "$MIN" == "05" && "$HOUR" == "14" ]]; then
+              echo "mode=orf_scan" >> $GITHUB_OUTPUT
             elif [[ "$TIME" == "14:30" || "$TIME" == "14:3"* ]]; then
               echo "mode=close" >> $GITHUB_OUTPUT
             elif [[ "$TIME" == "20:30" || "$TIME" == "20:3"* ]]; then
@@ -205,17 +219,21 @@ jobs:
             exit 0
           fi
 
-          # ---- Tuesday-Friday: IRS daily + gap-fade ----
+          # ---- Tuesday-Friday: IRS daily + gap-fade + Earnings + ORF ----
           if   [[ "$TIME" == "11:00" || "$TIME" == "11:0"* ]]; then
             echo "mode=irs_daily" >> $GITHUB_OUTPUT
           elif [[ "$TIME" == "11:30" || "$TIME" == "11:3"* ]]; then
             echo "mode=scanner" >> $GITHUB_OUTPUT
+          elif [[ "$TIME" == "12:00" || "$TIME" == "12:0"* ]]; then
+            echo "mode=earnings_scan" >> $GITHUB_OUTPUT
           elif [[ "$TIME" == "13:15" || "$TIME" == "13:1"* ]]; then
             echo "mode=premarket" >> $GITHUB_OUTPUT
           elif [[ "$TIME" == "13:30" || "$TIME" == "13:3"* ]]; then
             echo "mode=open" >> $GITHUB_OUTPUT
           elif [[ "$TIME" == "13:45" || "$TIME" == "14:00" || "$TIME" == "14:15" ]]; then
             echo "mode=monitor" >> $GITHUB_OUTPUT
+          elif [[ "$MIN" == "05" && "$HOUR" == "14" ]]; then
+            echo "mode=orf_scan" >> $GITHUB_OUTPUT
           elif [[ "$TIME" == "14:30" || "$TIME" == "14:3"* ]]; then
             echo "mode=close" >> $GITHUB_OUTPUT
           elif [[ "$TIME" == "20:30" || "$TIME" == "20:3"* ]]; then
@@ -256,6 +274,18 @@ jobs:
         if: steps.mode.outputs.mode == 'summary'
         run: python scanner/alpaca_agent.py --agent all --mode summary
 
+      # ---- Earnings Fade scanner steps ----
+
+      - name: Earnings Fade — pre-market scan
+        if: steps.mode.outputs.mode == 'earnings_scan'
+        run: python scanner/earnings_scanner.py --mode scan
+
+      # ---- ORF scanner steps ----
+
+      - name: ORF — opening range scan
+        if: steps.mode.outputs.mode == 'orf_scan'
+        run: python scanner/orf_scanner.py --mode scan
+
       # ---- IRS strategy steps ----
 
       - name: IRS — weekly scan
@@ -280,15 +310,18 @@ jobs:
 
       - name: Save scan data to repo
         if: |
-          steps.mode.outputs.mode == 'scanner'   ||
-          steps.mode.outputs.mode == 'summary'   ||
-          steps.mode.outputs.mode == 'irs_weekly' ||
-          steps.mode.outputs.mode == 'irs_daily'  ||
+          steps.mode.outputs.mode == 'scanner'        ||
+          steps.mode.outputs.mode == 'summary'        ||
+          steps.mode.outputs.mode == 'earnings_scan'  ||
+          steps.mode.outputs.mode == 'orf_scan'       ||
+          steps.mode.outputs.mode == 'irs_weekly'     ||
+          steps.mode.outputs.mode == 'irs_daily'      ||
           steps.mode.outputs.mode == 'irs_entry_and_open'
         run: |
           git config user.name "Trading Bot"
           git config user.email "bot@trading-scanner"
           git add scanner/data/latest_scan.json scanner/data/history/ || true
+          git add scanner/data/ef_state.json scanner/data/orf_state.json || true
           git add scanner/data/irs_watchlist.json scanner/data/irs_state.json scanner/data/irs_positions.json || true
           git diff --cached --quiet || git commit -m "data: scan results $(date -u +%Y-%m-%d)"
           git push || true

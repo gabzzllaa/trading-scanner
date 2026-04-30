@@ -499,13 +499,17 @@ def _send_telegram(message: str) -> None:
         print(f"  [Telegram] Failed: {e}")
 
 
-def _send_scan_alert(a_plus: list, monitor: list, no_borrow: list = None) -> None:
+def _send_scan_alert(a_plus: list, monitor: list, no_borrow: list = None, total_scanned: int = 0) -> None:
     no_borrow = no_borrow or []
-    if not a_plus and not monitor:
-        print("  [Telegram] No qualifying Earnings Fade setups - skipping.")
-        return
-
     now_str = _fmt_et_sgt()
+    if not a_plus and not monitor:
+        _send_telegram(
+            f"*Earnings Fade Scanner* - {now_str}\n"
+            f"{total_scanned} earnings gapper(s) scanned — none qualify.\n"
+            "_No Earnings Fade setups today. Stand down._"
+        )
+        print("  [Telegram] Sent 'no qualifying setups' confirmation.")
+        return
 
     if not a_plus:
         lines = [
@@ -666,7 +670,7 @@ def mode_scan():
         json.dump({"scanned_at": state["scanned_at"], "candidates": scored}, f, indent=2, default=str)
 
     # Alert (only confirmed shortable setups)
-    _send_scan_alert(a_plus, monitor, no_borrow)
+    _send_scan_alert(a_plus, monitor, no_borrow, total_scanned=len(scored))
 
 
 # ===========================================================================
