@@ -523,7 +523,7 @@ def scan_tradingview() -> list[dict]:
             "name",
             "close",
             "premarket_close",
-            "premarket_change",
+            "premarket_change_percent",
             "premarket_volume",
             "average_volume_10d_calc",
             "market_cap_basic",
@@ -532,23 +532,10 @@ def scan_tradingview() -> list[dict]:
         ],
         "filter": [
             {"left": "is_primary", "operation": "equal", "right": True},
-            {"left": "premarket_change", "operation": "greater", "right": 0.20},
+            {"left": "premarket_change_percent", "operation": "greater", "right": 20},
             {"left": "market_cap_basic", "operation": "greater", "right": 1000000},
         ],
-        "filter2": {
-            "operator": "and",
-            "operands": [
-                {
-                    "operation": {
-                        "operator": "or",
-                        "operands": [
-                            {"expression": {"left": "type", "operation": "equal", "right": "stock"}},
-                        ],
-                    }
-                }
-            ],
-        },
-        "sort": {"sortBy": "premarket_change", "sortOrder": "desc"},
+        "sort": {"sortBy": "premarket_change_percent", "sortOrder": "desc"},
         "range": [0, 50],
     }
 
@@ -572,11 +559,11 @@ def scan_tradingview() -> list[dict]:
         d = item.get("d", [])
         if len(d) < 7:
             continue
-        ticker, prev_close, pm_price, pm_change, pm_vol, avg_vol, mkt_cap = d[:7]
+        ticker, prev_close, pm_price, pm_change_pct, pm_vol, avg_vol, mkt_cap = d[:7]
         if not ticker or pm_price is None or prev_close is None:
             continue
-        # pm_change from TV is already a percentage (e.g. 35.0 = 35%)
-        gap_pct = float(pm_change) if pm_change else 0
+        # premarket_change_percent from TV is already a percentage (e.g. 35.0 = 35%)
+        gap_pct = float(pm_change_pct) if pm_change_pct else 0
         results.append({
             "ticker": ticker.split(":")[1] if ":" in ticker else ticker,
             "source": "tradingview",
@@ -595,51 +582,93 @@ def scan_barchart() -> list[dict]:
     """
     Fetch pre-market gappers from Barchart API.
     """
-    print("  📡 Barchart API...")
-    url = (
-        "https://www.barchart.com/proxies/core-api/v1/quotes/get"
-        "?list=stocks.us.gap_up.pre_market&fields=symbol,lastPrice,priceChange,"
-        "percentChange,previousClose,volume,avgVolume&orderBy=percentChange"
-        "&orderDir=desc&startRow=1&numRows=50&raw=1"
-    )
-    headers = {**HEADERS, "Referer": "https://www.barchart.com/"}
+    print("  📡 Barchart (HTML scrape)...")
+    # Use Barchart's public pre-market gappers page (no auth required)
+    url = "https://www.barchart.com/stocks/gaps/pre-market/gap-up?startRow=1&numRows=50"
+    headers = {
+        **HEADERS,
+        "Referer":  "https://www.barchart.com/",
+        "Accept":   "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
     try:
         resp = requests.get(url, headers=headers, timeout=20)
-        if resp.status_code == 401:
-            print("    [!] Barchart: authentication required (skipping)")
+        if resp.status_code in (401, 403):
+            print("    [!] Barchart: access denied (skipping)")
             return []
         resp.raise_for_status()
-        data = resp.json()
     except Exception as e:
-        print(f"    [!] Barchart error: {type(e).__name__}")
+        print(f"    [!] Barchart error: {type(e).__name__}: {str(e)[:60]}")
         return []
 
+    soup = BeautifulSoup(resp.text, "html.parser")
     results = []
-    for item in data.get("data", []):
-        q = item.get("raw", item)
-        ticker = q.get("symbol")
-        if not ticker:
+
+    # Barchart renders data in a table — find rows with ticker + gap data
+    table = soup.find("table")
+    if not table:
+        # Fallback: try to find JSON embedded in page script tags
+        import re
+        scripts = soup.find_all("script")
+        for s in scripts:
+            if s.string and "symbol" in s.string and "percentChange" in s.string:
+                match = re.search(r'\[(\{.*?"symbol".*?\})\]', s.string, re.DOTALL)
+                if match:
+                    try:
+                        rows = json.loads("[" + match.group(1) + "]")
+                        for row in rows:
+                            ticker = row.get("symbol")
+                            pct    = row.get("percentChange")
+                            price  = row.get("lastPrice")
+                            prev   = row.get("previousClose")
+                            vol    = row.get("volume")
+                            avg_v  = row.get("avgVolume")
+                            if not ticker or pct is None:
+                                continue
+                            try:
+                                gap_pct = float(str(pct).replace("%",""))
+                            except Exception:
+                                continue
+                            results.append({
+                                "ticker": ticker,
+                                "source": "barchart",
+                                "prev_close": float(prev) if prev else None,
+                                "pm_price":   float(price) if price else None,
+                                "premarket_gap_pct": round(gap_pct, 2),
+                                "pm_volume":  vol,
+                                "avg_daily_volume": avg_v,
+                                "market_cap_m": None,
+                            })
+                    except Exception:
+                        pass
+        print(f"    Found {len(results)} gappers from Barchart (script parse)")
+        return results
+
+    rows = table.find_all("tr")[1:]
+    for row in rows:
+        cols = row.find_all("td")
+        if len(cols) < 4:
             continue
-        pm_price = q.get("lastPrice")
-        prev_close = q.get("previousClose")
-        pct_change = q.get("percentChange")
-        pm_vol = q.get("volume")
-        avg_vol = q.get("avgVolume")
-        if pm_price is None or prev_close is None:
+        try:
+            ticker    = cols[0].get_text(strip=True).split("\n")[0]
+            pct_text  = cols[2].get_text(strip=True).replace("%", "").replace("+", "")
+            price_text = cols[1].get_text(strip=True).replace("$", "").replace(",", "")
+            gap_pct   = float(pct_text)
+            pm_price  = float(price_text) if price_text else None
+            if not ticker or gap_pct <= 0:
+                continue
+            results.append({
+                "ticker": ticker,
+                "source": "barchart",
+                "prev_close": None,
+                "pm_price":   pm_price,
+                "premarket_gap_pct": round(gap_pct, 2),
+                "pm_volume":  None,
+                "avg_daily_volume": None,
+                "market_cap_m": None,
+            })
+        except Exception:
             continue
-        gap_pct = float(pct_change) if pct_change else (
-            ((pm_price - prev_close) / prev_close * 100) if prev_close else 0
-        )
-        results.append({
-            "ticker": ticker,
-            "source": "barchart",
-            "prev_close": prev_close,
-            "pm_price": pm_price,
-            "premarket_gap_pct": round(gap_pct, 2),
-            "pm_volume": pm_vol,
-            "avg_daily_volume": avg_vol,
-            "market_cap_m": None,
-        })
+
     print(f"    Found {len(results)} gappers from Barchart")
     return results
 
@@ -649,7 +678,7 @@ def scan_stockanalysis() -> list[dict]:
     Scrape pre-market gainers from StockAnalysis.com as backup.
     """
     print("  📡 StockAnalysis.com (backup scrape)...")
-    url = "https://stockanalysis.com/markets/premarket/gainers/"
+    url = "https://stockanalysis.com/markets/pre-market/"
     try:
         resp = requests.get(url, headers=HEADERS, timeout=20)
         resp.raise_for_status()

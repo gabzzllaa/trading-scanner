@@ -121,9 +121,9 @@ def check_tradingview() -> dict:
 
 
 def check_barchart() -> dict:
-    """GET Barchart pre-market movers page — expect HTML with table data."""
+    """GET Barchart pre-market gappers page — expect HTML with table data."""
     name = "Barchart.com"
-    url  = "https://www.barchart.com/stocks/quotes/percent_change/greater_than/10?reportPage=1"
+    url  = "https://www.barchart.com/stocks/gaps/pre-market/gap-up?startRow=1&numRows=10"
     start = time.time()
     try:
         r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
@@ -139,7 +139,7 @@ def check_barchart() -> dict:
 def check_stockanalysis() -> dict:
     """GET StockAnalysis pre-market page."""
     name = "StockAnalysis.com"
-    url  = "https://stockanalysis.com/markets/pre-market/"
+    url  = "https://stockanalysis.com/markets/pre-market/?p=gainers"
     start = time.time()
     try:
         r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
@@ -261,7 +261,7 @@ def check_watchlist_freshness() -> dict:
             try:
                 gen_dt  = datetime.fromisoformat(gen_utc.replace("Z", "+00:00"))
                 age_days = (_now_utc() - gen_dt).days
-                if age_days > 7:
+                if age_days > 14:
                     return {"name": name, "ok": False, "ms": 0,
                             "detail": f"{len(stocks)} stocks but {age_days} days old — needs refresh"}
                 return {"name": name, "ok": True, "ms": 0,
