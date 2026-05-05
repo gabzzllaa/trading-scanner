@@ -78,7 +78,7 @@ TIER_MONITOR = CONFIG.get("bagholder", {}).get("tier_monitor_min", 20)
 
 # Agent stock universes — in a real run these come from watchlist.json
 # Each agent uses the full watchlist but tags its source
-AGENT_SOURCES = {1: "tradingview", 2: "barchart", 3: "stockanalysis"}
+AGENT_SOURCES = {1: "gap-fade", 2: "orf", 3: "earnings"}
 
 # ---------------------------------------------------------------------------
 # Time helpers

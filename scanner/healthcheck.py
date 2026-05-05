@@ -120,38 +120,6 @@ def check_tradingview() -> dict:
         return {"name": name, "ok": False, "ms": ms, "detail": str(e)[:80]}
 
 
-def check_barchart() -> dict:
-    """GET Barchart pre-market gappers page — expect HTML with table data."""
-    name = "Barchart.com"
-    url  = "https://www.barchart.com/stocks/gaps/pre-market/gap-up?startRow=1&numRows=10"
-    start = time.time()
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-        ms = int((time.time() - start) * 1000)
-        if r.status_code == 200 and len(r.text) > 1000:
-            return {"name": name, "ok": True,  "ms": ms, "detail": f"{len(r.text)//1024}KB received"}
-        return {"name": name, "ok": False, "ms": ms, "detail": f"HTTP {r.status_code} or empty response"}
-    except Exception as e:
-        ms = int((time.time() - start) * 1000)
-        return {"name": name, "ok": False, "ms": ms, "detail": str(e)[:80]}
-
-
-def check_stockanalysis() -> dict:
-    """GET StockAnalysis pre-market page."""
-    name = "StockAnalysis.com"
-    url  = "https://stockanalysis.com/markets/pre-market/?p=gainers"
-    start = time.time()
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-        ms = int((time.time() - start) * 1000)
-        if r.status_code == 200 and len(r.text) > 1000:
-            return {"name": name, "ok": True,  "ms": ms, "detail": f"{len(r.text)//1024}KB received"}
-        return {"name": name, "ok": False, "ms": ms, "detail": f"HTTP {r.status_code} or empty response"}
-    except Exception as e:
-        ms = int((time.time() - start) * 1000)
-        return {"name": name, "ok": False, "ms": ms, "detail": str(e)[:80]}
-
-
 def check_iborrowdesk() -> dict:
     """GET iborrowdesk API for a known ticker (TSLA)."""
     name = "iborrowdesk.com"
@@ -317,8 +285,6 @@ def run_healthcheck() -> bool:
     # Run all checks
     checks = [
         check_tradingview,
-        check_barchart,
-        check_stockanalysis,
         check_iborrowdesk,
         check_finviz,
         check_nasdaq_earnings,
@@ -341,7 +307,7 @@ def run_healthcheck() -> bool:
     failures   = [r for r in results if not r["ok"]]
 
     # Critical sources (scanner won't work without these)
-    critical = {"TradingView Scanner", "iborrowdesk.com", "Alpaca Paper API"}
+    critical = {"TradingView Scanner", "iborrowdesk.com", "Alpaca Paper API", "Finviz.com (weekly watchlist)"}
     critical_failures = [r for r in failures if r["name"] in critical]
 
     print(f"\n  Summary: {len(results) - fail_count} OK / {fail_count} FAIL")
