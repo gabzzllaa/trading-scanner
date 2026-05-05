@@ -833,4 +833,40 @@ def main():
     parser.add_argument("--agent", required=True,
                         help="Agent number: 1, 2, 3, or 'all'")
     parser.add_argument("--mode", required=True,
-                        choices=["premarket", "open", "monitor", "
+                        choices=["premarket", "open", "monitor", "close", "summary"],
+                        help="Mode to run")
+    args = parser.parse_args()
+
+    agent_ids = []
+    if args.agent == "all":
+        agent_ids = [1, 2, 3]
+    else:
+        try:
+            agent_ids = [int(args.agent)]
+        except ValueError:
+            print(f"Invalid --agent value: {args.agent}. Use 1, 2, 3, or 'all'.")
+            raise SystemExit(1)
+
+    for agent_id in agent_ids:
+        print(f"\n{'='*60}")
+        print(f"  AGENT {agent_id} — MODE: {args.mode.upper()}")
+        print(f"{'='*60}")
+        try:
+            if args.mode == "premarket":
+                mode_premarket(agent_id)
+            elif args.mode == "open":
+                mode_open(agent_id)
+            elif args.mode == "monitor":
+                mode_monitor(agent_id)
+            elif args.mode == "close":
+                mode_close(agent_id)
+            elif args.mode == "summary":
+                mode_summary(agent_id)
+        except Exception as e:
+            print(f"  [Agent {agent_id}] ERROR in mode {args.mode}: {e}")
+            import traceback
+            traceback.print_exc()
+
+
+if __name__ == "__main__":
+    main()
