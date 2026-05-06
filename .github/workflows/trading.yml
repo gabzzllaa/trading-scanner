@@ -70,7 +70,7 @@ on:
           - close
           - summary
           - earnings_scan
-          - orf_scan
+          - orf_scan_and_open
           - irs_weekly
           - irs_daily
           - irs_entry
@@ -208,7 +208,7 @@ jobs:
             elif [[ "$TIME" == "13:45" || "$TIME" == "14:00" || "$TIME" == "14:15" ]]; then
               echo "mode=monitor" >> $GITHUB_OUTPUT
             elif [[ "$MIN" == "05" && "$HOUR" == "14" ]]; then
-              echo "mode=orf_scan" >> $GITHUB_OUTPUT
+              echo "mode=orf_scan_and_open" >> $GITHUB_OUTPUT
             elif [[ "$TIME" == "14:30" || "$TIME" == "14:3"* ]]; then
               echo "mode=close" >> $GITHUB_OUTPUT
             elif [[ "$TIME" == "20:30" || "$TIME" == "20:3"* ]]; then
@@ -256,11 +256,13 @@ jobs:
         if: steps.mode.outputs.mode == 'premarket'
         run: python scanner/alpaca_agent.py --agent all --mode premarket
 
-      - name: Agents — market open orders
+      - name: Agents 1+3 — market open orders (gap-fade + earnings)
         if: |
           steps.mode.outputs.mode == 'open' ||
           steps.mode.outputs.mode == 'irs_entry_and_open'
-        run: python scanner/alpaca_agent.py --agent all --mode open
+        run: |
+          python scanner/alpaca_agent.py --agent 1 --mode open
+          python scanner/alpaca_agent.py --agent 3 --mode open
 
       - name: Agents — monitor positions
         if: steps.mode.outputs.mode == 'monitor'
@@ -280,11 +282,13 @@ jobs:
         if: steps.mode.outputs.mode == 'earnings_scan'
         run: python scanner/earnings_scanner.py --mode scan
 
-      # ---- ORF scanner steps ----
+      # ---- ORF scanner + Agent 2 open (combined — must run sequentially) ----
 
-      - name: ORF — opening range scan
-        if: steps.mode.outputs.mode == 'orf_scan'
-        run: python scanner/orf_scanner.py --mode scan
+      - name: ORF — scan then Agent 2 open
+        if: steps.mode.outputs.mode == 'orf_scan_and_open'
+        run: |
+          python scanner/orf_scanner.py --mode scan
+          python scanner/alpaca_agent.py --agent 2 --mode open
 
       # ---- IRS strategy steps ----
 
@@ -312,8 +316,8 @@ jobs:
         if: |
           steps.mode.outputs.mode == 'scanner'        ||
           steps.mode.outputs.mode == 'summary'        ||
-          steps.mode.outputs.mode == 'earnings_scan'  ||
-          steps.mode.outputs.mode == 'orf_scan'       ||
+          steps.mode.outputs.mode == 'earnings_scan'      ||
+          steps.mode.outputs.mode == 'orf_scan_and_open' ||
           steps.mode.outputs.mode == 'irs_weekly'     ||
           steps.mode.outputs.mode == 'irs_daily'      ||
           steps.mode.outputs.mode == 'irs_entry_and_open'
