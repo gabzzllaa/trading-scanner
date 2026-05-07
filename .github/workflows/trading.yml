@@ -175,71 +175,58 @@ jobs:
             exit 0
           fi
 
-          HOUR=$(date -u +%H)
-          MIN=$(date -u +%M)
-          DOW=$(date -u +%u)   # 1=Mon, 2=Tue ... 7=Sun
-          TIME="${HOUR}:${MIN}"
+          # Use integer minutes-since-midnight for robust ±5 min tolerance
+          # (GitHub Actions runners can fire up to 5 min late)
+          HOUR=$(date -u +%-H)   # no zero-pad
+          MIN=$(date -u +%-M)    # no zero-pad
+          DOW=$(date -u +%u)     # 1=Mon, 2=Tue ... 7=Sun
+          NOW=$(( HOUR * 60 + MIN ))
 
-          # ---- Sunday: IRS only (no gap-fade on weekends) ----
+          # Helper: is NOW within 5 min of target HH:MM?
+          near() { local t=$(( $1 * 60 + $2 )); [[ $NOW -ge $t && $NOW -lt $(( t + 6 )) ]]; }
+
+          echo "DEBUG: DOW=$DOW HOUR=$HOUR MIN=$MIN NOW=$NOW"
+
+          # ---- Sunday: IRS only ----
           if [[ "$DOW" == "7" ]]; then
-            if   [[ "$TIME" == "02:00" || "$TIME" == "02:0"* ]]; then
-              echo "mode=irs_weekly" >> $GITHUB_OUTPUT
-            elif [[ "$TIME" == "02:30" || "$TIME" == "02:3"* ]]; then
-              echo "mode=irs_monitor" >> $GITHUB_OUTPUT
-            else
-              echo "mode=noop" >> $GITHUB_OUTPUT
+            if   near 2 0;  then echo "mode=irs_weekly"  >> $GITHUB_OUTPUT
+            elif near 2 30; then echo "mode=irs_monitor" >> $GITHUB_OUTPUT
+            else                 echo "mode=noop"        >> $GITHUB_OUTPUT
             fi
             exit 0
           fi
 
           # ---- Monday: IRS daily + IRS entry + gap-fade + ORF + Earnings ----
           if [[ "$DOW" == "1" ]]; then
-            if   [[ "$TIME" == "11:00" || "$TIME" == "11:0"* ]]; then
-              echo "mode=irs_daily" >> $GITHUB_OUTPUT
-            elif [[ "$TIME" == "11:30" || "$TIME" == "11:3"* ]]; then
-              echo "mode=scanner" >> $GITHUB_OUTPUT
-            elif [[ "$TIME" == "12:00" || "$TIME" == "12:0"* ]]; then
-              echo "mode=earnings_scan" >> $GITHUB_OUTPUT
-            elif [[ "$TIME" == "13:15" || "$TIME" == "13:1"* ]]; then
-              echo "mode=premarket" >> $GITHUB_OUTPUT
-            elif [[ "$TIME" == "13:30" || "$TIME" == "13:3"* ]]; then
-              # Monday 13:30: run BOTH irs_entry AND gap-fade open
-              echo "mode=irs_entry_and_open" >> $GITHUB_OUTPUT
-            elif [[ "$TIME" == "13:45" || "$TIME" == "14:00" || "$TIME" == "14:15" ]]; then
-              echo "mode=monitor" >> $GITHUB_OUTPUT
-            elif [[ "$MIN" == "05" && "$HOUR" == "14" ]]; then
-              echo "mode=orf_scan_and_open" >> $GITHUB_OUTPUT
-            elif [[ "$TIME" == "14:30" || "$TIME" == "14:3"* ]]; then
-              echo "mode=close" >> $GITHUB_OUTPUT
-            elif [[ "$TIME" == "20:30" || "$TIME" == "20:3"* ]]; then
-              echo "mode=summary" >> $GITHUB_OUTPUT
-            else
-              echo "mode=noop" >> $GITHUB_OUTPUT
+            if   near 11 0;  then echo "mode=irs_daily"         >> $GITHUB_OUTPUT
+            elif near 11 30; then echo "mode=scanner"           >> $GITHUB_OUTPUT
+            elif near 12 0;  then echo "mode=earnings_scan"     >> $GITHUB_OUTPUT
+            elif near 13 15; then echo "mode=premarket"         >> $GITHUB_OUTPUT
+            elif near 13 30; then echo "mode=irs_entry_and_open" >> $GITHUB_OUTPUT
+            elif near 13 45; then echo "mode=monitor"           >> $GITHUB_OUTPUT
+            elif near 14 0;  then echo "mode=monitor"           >> $GITHUB_OUTPUT
+            elif near 14 5;  then echo "mode=orf_scan_and_open" >> $GITHUB_OUTPUT
+            elif near 14 15; then echo "mode=monitor"           >> $GITHUB_OUTPUT
+            elif near 14 30; then echo "mode=close"             >> $GITHUB_OUTPUT
+            elif near 20 30; then echo "mode=summary"           >> $GITHUB_OUTPUT
+            else                  echo "mode=noop"              >> $GITHUB_OUTPUT
             fi
             exit 0
           fi
 
           # ---- Tuesday-Friday: IRS daily + gap-fade + Earnings + ORF ----
-          if   [[ "$TIME" == "11:00" || "$TIME" == "11:0"* ]]; then
-            echo "mode=irs_daily" >> $GITHUB_OUTPUT
-          elif [[ "$TIME" == "11:30" || "$TIME" == "11:3"* ]]; then
-            echo "mode=scanner" >> $GITHUB_OUTPUT
-          elif [[ "$TIME" == "12:00" || "$TIME" == "12:0"* ]]; then
-            echo "mode=earnings_scan" >> $GITHUB_OUTPUT
-          elif [[ "$TIME" == "13:15" || "$TIME" == "13:1"* ]]; then
-            echo "mode=premarket" >> $GITHUB_OUTPUT
-          elif [[ "$TIME" == "13:30" || "$TIME" == "13:3"* ]]; then
-            echo "mode=open" >> $GITHUB_OUTPUT
-          elif [[ "$TIME" == "13:45" || "$TIME" == "14:00" || "$TIME" == "14:15" ]]; then
-            echo "mode=monitor" >> $GITHUB_OUTPUT
-          elif [[ "$MIN" == "05" && "$HOUR" == "14" ]]; then
-            echo "mode=orf_scan" >> $GITHUB_OUTPUT
-          elif [[ "$TIME" == "14:30" || "$TIME" == "14:3"* ]]; then
-            echo "mode=close" >> $GITHUB_OUTPUT
-          elif [[ "$TIME" == "20:30" || "$TIME" == "20:3"* ]]; then
-            echo "mode=summary" >> $GITHUB_OUTPUT
-          else
-            echo "mode=noop" >> $GITHUB_OUTPUT
+          if   near 11 0;  then echo "mode=irs_daily"        >> $GITHUB_OUTPUT
+          elif near 11 30; then echo "mode=scanner"          >> $GITHUB_OUTPUT
+          elif near 12 0;  then echo "mode=earnings_scan"    >> $GITHUB_OUTPUT
+          elif near 13 15; then echo "mode=premarket"        >> $GITHUB_OUTPUT
+          elif near 13 30; then echo "mode=open"             >> $GITHUB_OUTPUT
+          elif near 13 45; then echo "mode=monitor"          >> $GITHUB_OUTPUT
+          elif near 14 0;  then echo "mode=monitor"          >> $GITHUB_OUTPUT
+          elif near 14 5;  then echo "mode=orf_scan_and_open" >> $GITHUB_OUTPUT
+          elif near 14 15; then echo "mode=monitor"          >> $GITHUB_OUTPUT
+          elif near 14 30; then echo "mode=close"            >> $GITHUB_OUTPUT
+          elif near 20 30; then echo "mode=summary"          >> $GITHUB_OUTPUT
+          else                  echo "mode=noop"             >> $GITHUB_OUTPUT
           fi
 
       # ---- Gap-fade strategy steps ----
