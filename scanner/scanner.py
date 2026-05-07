@@ -502,25 +502,22 @@ def watchlist_is_stale() -> bool:
 
 def scan_finviz_premarket() -> list[dict]:
     """
-    Fetch pre-market gappers from Finviz screener.
+    Fetch pre-market gappers from Finviz screener (v=152 pre-market view).
 
-    Uses two Finviz URLs:
-      1. v=152 (pre-market view) sorted by premarket_change desc — gives PM price,
-         PM change %, PM volume directly in the table.
-      2. Falls back to v=111 top gainers if v=152 returns nothing.
+    Finviz uses a complex nested table layout. This parser:
+    1. Finds ALL <tr> rows in the page that contain a quote.ashx ticker link
+    2. Locates the header row in the same parent table to map column positions
+    3. Extracts PM change%, PM price, EOD close, PM volume, avg volume, mkt cap
 
-    Returns list of dicts compatible with the rest of the scoring pipeline:
-      ticker, source, prev_close, pm_price, premarket_gap_pct,
-      pm_volume, avg_daily_volume, market_cap_m
+    Returns list of dicts compatible with the scoring pipeline.
     """
     print("  📡 Finviz Pre-Market Scanner...")
 
-    # v=152 is Finviz's pre-market view — columns include PM change, PM price, PM volume
     url = (
         "https://finviz.com/screener.ashx?v=152"
-        "&f=sh_price_u50"          # price under $50 — focus on retail-dominated names
-        "&s=ta_topgainers"         # top gainers sort
-        "&o=-premarket_change"     # sort by pre-market change descending
+        "&f=sh_price_u50"
+        "&s=ta_topgainers"
+        "&o=-premarket_change"
     )
 
     try:
@@ -531,66 +528,61 @@ def scan_finviz_premarket() -> list[dict]:
         return []
 
     soup = BeautifulSoup(resp.text, "html.parser")
+    ticker_pattern = re.compile(r"quote\.ashx\?t=([A-Z]{1,5})(?:&|$)")
     results = []
+    col_map = {}
 
-    # Finviz v=152 table: find the screener results table
-    # Column headers vary by view — find the table with ticker column
-    table = soup.find("table", id="screener-content")
-    if not table:
-        # Try alternate selector
-        table = soup.find("table", class_="table-light")
-    if not table:
-        # Fall back: find any table containing ticker links
-        for t in soup.find_all("table"):
-            if t.find("a", href=re.compile(r"quote\.ashx\?t=")):
-                table = t
-                break
+    # Find every <tr> that contains a ticker link — these are the data rows
+    data_rows = []
+    for tr in soup.find_all("tr"):
+        if tr.find("a", href=ticker_pattern):
+            data_rows.append(tr)
 
-    if not table:
-        print("    [!] Finviz: could not locate screener table — structure may have changed")
+    if not data_rows:
+        print("    [!] Finviz: no ticker rows found — page may require login or structure changed")
         return []
 
-    # Parse header row to find column indices
-    header_row = table.find("tr", class_=re.compile(r"header|thead|filters", re.I))
-    if not header_row:
-        header_row = table.find("tr")
+    # Find column map from the header row in the same parent table
+    # Look at the parent table of the first data row and find its header <tr>
+    parent_table = data_rows[0].find_parent("table")
+    if parent_table:
+        for tr in parent_table.find_all("tr"):
+            cells = tr.find_all("td")
+            # Header row has no ticker links and contains text like "Ticker", "Price", etc.
+            if not tr.find("a", href=ticker_pattern) and cells:
+                headers_list = [c.text.strip().lower() for c in cells]
+                for i, h in enumerate(headers_list):
+                    if h == "ticker":
+                        col_map["ticker_idx"] = i
+                    elif "premarket" in h and "change" in h:
+                        col_map["pm_change"] = i
+                    elif "premarket" in h and "price" in h:
+                        col_map["pm_price"] = i
+                    elif "premarket" in h and "vol" in h:
+                        col_map["pm_volume"] = i
+                    elif h in ("price", "price (eod)", "eod price"):
+                        col_map["price"] = i
+                    elif "avg vol" in h or "avg volume" in h:
+                        col_map["avg_vol"] = i
+                    elif "market cap" in h or "mkt cap" in h:
+                        col_map["mkt_cap"] = i
+                if col_map:
+                    break  # found the header row
 
-    headers_list = []
-    if header_row:
-        headers_list = [th.text.strip().lower() for th in header_row.find_all(["td", "th"])]
+    print(f"    Column map: {col_map}")
 
-    # Map column names to indices
-    col_map = {}
-    for i, h in enumerate(headers_list):
-        if h in ("no.", "no", "#"):
-            col_map["no"] = i
-        elif h == "ticker":
-            col_map["ticker"] = i
-        elif "premarket" in h and "change" in h:
-            col_map["pm_change"] = i
-        elif "premarket" in h and "price" in h:
-            col_map["pm_price"] = i
-        elif "premarket" in h and "vol" in h:
-            col_map["pm_volume"] = i
-        elif h in ("price", "price (eod)"):
-            col_map["price"] = i
-        elif "avg vol" in h or "avg volume" in h:
-            col_map["avg_vol"] = i
-        elif "market cap" in h or "mkt cap" in h:
-            col_map["mkt_cap"] = i
-        elif h == "change":
-            col_map["change"] = i
-        elif h == "volume":
-            col_map["volume"] = i
+    def _cell_text(cells, key):
+        idx = col_map.get(key)
+        if idx is None or idx >= len(cells):
+            return None
+        return cells[idx].text.strip()
 
-    ticker_pattern = re.compile(r"quote\.ashx\?t=([A-Z]{1,5})(?:&|$)")
-
-    for row in table.find_all("tr"):
-        cells = row.find_all("td")
+    for tr in data_rows:
+        cells = tr.find_all("td")
         if len(cells) < 3:
             continue
 
-        # Extract ticker from link
+        # Extract ticker
         ticker = None
         for cell in cells:
             a = cell.find("a", href=ticker_pattern)
@@ -602,67 +594,41 @@ def scan_finviz_premarket() -> list[dict]:
         if not ticker:
             continue
 
-        def _cell(key):
-            idx = col_map.get(key)
-            if idx is None or idx >= len(cells):
-                return None
-            return cells[idx].text.strip()
+        # Parse values
+        pm_change_pct = parse_float((_cell_text(cells, "pm_change") or "").replace("%", ""))
+        pm_price      = parse_float((_cell_text(cells, "pm_price")  or "").replace("$", ""))
+        eod_price     = parse_float((_cell_text(cells, "price")     or "").replace("$", ""))
 
-        # Parse pre-market change %
-        pm_change_str = _cell("pm_change") or ""
-        pm_change_pct = parse_float(pm_change_str.replace("%", ""))
-
-        # Parse pre-market price
-        pm_price_str = _cell("pm_price") or ""
-        pm_price = parse_float(pm_price_str.replace("$", ""))
-
-        # EOD close (prev_close for gap calculation)
-        eod_price_str = _cell("price") or ""
-        eod_price = parse_float(eod_price_str.replace("$", ""))
-
-        # If we have pm_change_pct and eod_price but no pm_price, compute it
+        # Derive missing values
         if pm_price is None and eod_price and pm_change_pct is not None:
             pm_price = round(eod_price * (1 + pm_change_pct / 100), 4)
-
-        # If we have pm_price and eod_price but no pm_change_pct, compute it
         if pm_change_pct is None and pm_price and eod_price and eod_price > 0:
             pm_change_pct = round((pm_price - eod_price) / eod_price * 100, 2)
 
-        # Skip if no meaningful pre-market data
         if pm_change_pct is None or pm_change_pct < 20:
             continue
         if pm_price is None or pm_price <= 0:
             continue
 
-        # Pre-market volume
-        pm_vol_str = _cell("pm_volume") or ""
-        pm_vol = parse_float(pm_vol_str)
-        if pm_vol and pm_vol < 1000:
-            pm_vol = int(pm_vol * 1_000_000)  # Finviz shows in millions
-        elif pm_vol:
-            pm_vol = int(pm_vol)
+        # Volumes — Finviz shows e.g. "1.23M" which parse_float returns as 1.23
+        pm_vol  = parse_float(_cell_text(cells, "pm_volume") or "")
+        avg_vol = parse_float(_cell_text(cells, "avg_vol")   or "")
+        if pm_vol  is not None and pm_vol  < 10000: pm_vol  = int(pm_vol  * 1_000_000)
+        elif pm_vol  is not None:                    pm_vol  = int(pm_vol)
+        if avg_vol is not None and avg_vol < 10000: avg_vol = int(avg_vol * 1_000_000)
+        elif avg_vol is not None:                   avg_vol = int(avg_vol)
 
-        # Average daily volume
-        avg_vol_str = _cell("avg_vol") or ""
-        avg_vol = parse_float(avg_vol_str)
-        if avg_vol and avg_vol < 10000:
-            avg_vol = int(avg_vol * 1_000_000)
-        elif avg_vol:
-            avg_vol = int(avg_vol)
-
-        # Market cap
-        mkt_cap_str = _cell("mkt_cap") or ""
-        mkt_cap_m = parse_float(mkt_cap_str)  # Finviz shows in millions (e.g. "123.4M" → 123.4)
+        mkt_cap_m = parse_float(_cell_text(cells, "mkt_cap") or "")
 
         results.append({
-            "ticker": ticker,
-            "source": "finviz",
-            "prev_close": eod_price,
-            "pm_price": pm_price,
+            "ticker":           ticker,
+            "source":           "finviz",
+            "prev_close":       eod_price,
+            "pm_price":         pm_price,
             "premarket_gap_pct": round(pm_change_pct, 2),
-            "pm_volume": pm_vol,
+            "pm_volume":        pm_vol,
             "avg_daily_volume": avg_vol,
-            "market_cap_m": mkt_cap_m,
+            "market_cap_m":     mkt_cap_m,
         })
 
     results.sort(key=lambda x: x.get("premarket_gap_pct", 0), reverse=True)
