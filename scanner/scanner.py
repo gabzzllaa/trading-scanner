@@ -500,81 +500,173 @@ def watchlist_is_stale() -> bool:
 # LAYER 2 — MORNING PRE-MARKET SCANNER
 # ===========================================================================
 
-def scan_tradingview() -> list[dict]:
+def scan_finviz_premarket() -> list[dict]:
     """
-    Fetch pre-market gappers from TradingView Scanner API.
-    Returns list of dicts with ticker, premarket_gap_pct, price, prev_close.
+    Fetch pre-market gappers from Finviz screener.
 
-    TradingView's current API (2025+) requires:
-    - "markets" array instead of inline exchange filter
-    - "filter2" with operator/operands syntax for complex filters
-    - "filter" array still works for simple field filters
-    - Referer header to avoid 400s
+    Uses two Finviz URLs:
+      1. v=152 (pre-market view) sorted by premarket_change desc — gives PM price,
+         PM change %, PM volume directly in the table.
+      2. Falls back to v=111 top gainers if v=152 returns nothing.
+
+    Returns list of dicts compatible with the rest of the scoring pipeline:
+      ticker, source, prev_close, pm_price, premarket_gap_pct,
+      pm_volume, avg_daily_volume, market_cap_m
     """
-    print("  📡 TradingView Scanner API...")
-    url = "https://scanner.tradingview.com/america/scan"
+    print("  📡 Finviz Pre-Market Scanner...")
 
-    # Updated payload format for current TradingView API
-    payload = {
-        "markets": ["america"],
-        "symbols": {"query": {"types": ["stock"]}, "tickers": []},
-        "options": {"lang": "en"},
-        "columns": [
-            "name",
-            "close",
-            "premarket_close",
-            "premarket_change_percent",
-            "premarket_volume",
-            "average_volume_10d_calc",
-            "market_cap_basic",
-            "type",
-            "subtype",
-        ],
-        "filter": [
-            {"left": "is_primary", "operation": "equal", "right": True},
-            {"left": "premarket_change_percent", "operation": "greater", "right": 20},
-            {"left": "market_cap_basic", "operation": "greater", "right": 1000000},
-        ],
-        "sort": {"sortBy": "premarket_change_percent", "sortOrder": "desc"},
-        "range": [0, 50],
-    }
-
-    headers = {
-        **HEADERS,
-        "Origin": "https://www.tradingview.com",
-        "Referer": "https://www.tradingview.com/",
-        "Content-Type": "application/json",
-    }
+    # v=152 is Finviz's pre-market view — columns include PM change, PM price, PM volume
+    url = (
+        "https://finviz.com/screener.ashx?v=152"
+        "&f=sh_price_u50"          # price under $50 — focus on retail-dominated names
+        "&s=ta_topgainers"         # top gainers sort
+        "&o=-premarket_change"     # sort by pre-market change descending
+    )
 
     try:
-        resp = requests.post(url, json=payload, headers=headers, timeout=20)
+        resp = requests.get(url, headers=HEADERS, timeout=20)
         resp.raise_for_status()
-        data = resp.json()
     except Exception as e:
-        print(f"    [!] TradingView error: {e}")
+        print(f"    [!] Finviz pre-market fetch error: {e}")
         return []
 
+    soup = BeautifulSoup(resp.text, "html.parser")
     results = []
-    for item in data.get("data", []):
-        d = item.get("d", [])
-        if len(d) < 7:
+
+    # Finviz v=152 table: find the screener results table
+    # Column headers vary by view — find the table with ticker column
+    table = soup.find("table", id="screener-content")
+    if not table:
+        # Try alternate selector
+        table = soup.find("table", class_="table-light")
+    if not table:
+        # Fall back: find any table containing ticker links
+        for t in soup.find_all("table"):
+            if t.find("a", href=re.compile(r"quote\.ashx\?t=")):
+                table = t
+                break
+
+    if not table:
+        print("    [!] Finviz: could not locate screener table — structure may have changed")
+        return []
+
+    # Parse header row to find column indices
+    header_row = table.find("tr", class_=re.compile(r"header|thead|filters", re.I))
+    if not header_row:
+        header_row = table.find("tr")
+
+    headers_list = []
+    if header_row:
+        headers_list = [th.text.strip().lower() for th in header_row.find_all(["td", "th"])]
+
+    # Map column names to indices
+    col_map = {}
+    for i, h in enumerate(headers_list):
+        if h in ("no.", "no", "#"):
+            col_map["no"] = i
+        elif h == "ticker":
+            col_map["ticker"] = i
+        elif "premarket" in h and "change" in h:
+            col_map["pm_change"] = i
+        elif "premarket" in h and "price" in h:
+            col_map["pm_price"] = i
+        elif "premarket" in h and "vol" in h:
+            col_map["pm_volume"] = i
+        elif h in ("price", "price (eod)"):
+            col_map["price"] = i
+        elif "avg vol" in h or "avg volume" in h:
+            col_map["avg_vol"] = i
+        elif "market cap" in h or "mkt cap" in h:
+            col_map["mkt_cap"] = i
+        elif h == "change":
+            col_map["change"] = i
+        elif h == "volume":
+            col_map["volume"] = i
+
+    ticker_pattern = re.compile(r"quote\.ashx\?t=([A-Z]{1,5})(?:&|$)")
+
+    for row in table.find_all("tr"):
+        cells = row.find_all("td")
+        if len(cells) < 3:
             continue
-        ticker, prev_close, pm_price, pm_change_pct, pm_vol, avg_vol, mkt_cap = d[:7]
-        if not ticker or pm_price is None or prev_close is None:
+
+        # Extract ticker from link
+        ticker = None
+        for cell in cells:
+            a = cell.find("a", href=ticker_pattern)
+            if a:
+                m = ticker_pattern.search(a.get("href", ""))
+                if m:
+                    ticker = m.group(1)
+                    break
+        if not ticker:
             continue
-        # premarket_change_percent from TV is already a percentage (e.g. 35.0 = 35%)
-        gap_pct = float(pm_change_pct) if pm_change_pct else 0
+
+        def _cell(key):
+            idx = col_map.get(key)
+            if idx is None or idx >= len(cells):
+                return None
+            return cells[idx].text.strip()
+
+        # Parse pre-market change %
+        pm_change_str = _cell("pm_change") or ""
+        pm_change_pct = parse_float(pm_change_str.replace("%", ""))
+
+        # Parse pre-market price
+        pm_price_str = _cell("pm_price") or ""
+        pm_price = parse_float(pm_price_str.replace("$", ""))
+
+        # EOD close (prev_close for gap calculation)
+        eod_price_str = _cell("price") or ""
+        eod_price = parse_float(eod_price_str.replace("$", ""))
+
+        # If we have pm_change_pct and eod_price but no pm_price, compute it
+        if pm_price is None and eod_price and pm_change_pct is not None:
+            pm_price = round(eod_price * (1 + pm_change_pct / 100), 4)
+
+        # If we have pm_price and eod_price but no pm_change_pct, compute it
+        if pm_change_pct is None and pm_price and eod_price and eod_price > 0:
+            pm_change_pct = round((pm_price - eod_price) / eod_price * 100, 2)
+
+        # Skip if no meaningful pre-market data
+        if pm_change_pct is None or pm_change_pct < 20:
+            continue
+        if pm_price is None or pm_price <= 0:
+            continue
+
+        # Pre-market volume
+        pm_vol_str = _cell("pm_volume") or ""
+        pm_vol = parse_float(pm_vol_str)
+        if pm_vol and pm_vol < 1000:
+            pm_vol = int(pm_vol * 1_000_000)  # Finviz shows in millions
+        elif pm_vol:
+            pm_vol = int(pm_vol)
+
+        # Average daily volume
+        avg_vol_str = _cell("avg_vol") or ""
+        avg_vol = parse_float(avg_vol_str)
+        if avg_vol and avg_vol < 10000:
+            avg_vol = int(avg_vol * 1_000_000)
+        elif avg_vol:
+            avg_vol = int(avg_vol)
+
+        # Market cap
+        mkt_cap_str = _cell("mkt_cap") or ""
+        mkt_cap_m = parse_float(mkt_cap_str)  # Finviz shows in millions (e.g. "123.4M" → 123.4)
+
         results.append({
-            "ticker": ticker.split(":")[1] if ":" in ticker else ticker,
-            "source": "tradingview",
-            "prev_close": prev_close,
+            "ticker": ticker,
+            "source": "finviz",
+            "prev_close": eod_price,
             "pm_price": pm_price,
-            "premarket_gap_pct": round(gap_pct, 2),
+            "premarket_gap_pct": round(pm_change_pct, 2),
             "pm_volume": pm_vol,
             "avg_daily_volume": avg_vol,
-            "market_cap_m": round(mkt_cap / 1_000_000, 2) if mkt_cap else None,
+            "market_cap_m": mkt_cap_m,
         })
-    print(f"    Found {len(results)} gappers from TradingView")
+
+    results.sort(key=lambda x: x.get("premarket_gap_pct", 0), reverse=True)
+    print(f"    Found {len(results)} pre-market gappers >20% from Finviz")
     return results
 
 
@@ -922,9 +1014,9 @@ def run_morning_mode():
         print("⚠️  Watchlist is empty — run --mode watchlist first.")
         print("   Proceeding with gap data only (conditions 1–3 will score 0).")
 
-    # Fetch gappers from TradingView (sole reliable source from CI)
-    all_gappers = scan_tradingview()
-    print(f"\n  Total gappers from TradingView: {len(all_gappers)}")
+    # Fetch gappers from Finviz pre-market screener
+    all_gappers = scan_finviz_premarket()
+    print(f"\n  Total gappers from Finviz: {len(all_gappers)}")
 
     if not all_gappers:
         print("  No pre-market gappers found. Market may not be open yet or sources are down.")

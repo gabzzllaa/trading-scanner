@@ -84,37 +84,22 @@ TIMEOUT = 15  # seconds per check
 # Individual checks
 # ---------------------------------------------------------------------------
 
-def check_tradingview() -> dict:
-    """POST to TradingView scanner — expect data array back."""
-    name = "TradingView Scanner"
-    url  = "https://scanner.tradingview.com/america/scan"
-    payload = {
-        "markets": ["america"],
-        "symbols": {"query": {"types": ["stock"]}, "tickers": []},
-        "options": {"lang": "en"},
-        "columns": ["name", "close", "premarket_change_percent", "premarket_volume"],
-        "filter": [
-            {"left": "is_primary",               "operation": "equal",   "right": True},
-            {"left": "premarket_change_percent",  "operation": "greater", "right": 20},
-        ],
-        "sort":  {"sortBy": "premarket_change_percent", "sortOrder": "desc"},
-        "range": [0, 5],
-    }
-    headers = {
-        **HEADERS,
-        "Origin":       "https://www.tradingview.com",
-        "Referer":      "https://www.tradingview.com/",
-        "Content-Type": "application/json",
-    }
+def check_finviz_premarket() -> dict:
+    """GET Finviz pre-market screener — primary source for gap-fade scanner."""
+    name = "Finviz Pre-Market"
+    url  = (
+        "https://finviz.com/screener.ashx?v=152"
+        "&f=sh_price_u50"
+        "&s=ta_topgainers"
+        "&o=-premarket_change"
+    )
     start = time.time()
     try:
-        r = requests.post(url, json=payload, headers=headers, timeout=TIMEOUT)
+        r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
         ms = int((time.time() - start) * 1000)
-        if r.status_code == 200:
-            data  = r.json()
-            count = data.get("totalCount", len(data.get("data", [])))
-            return {"name": name, "ok": True,  "ms": ms, "detail": f"{count} pre-market gappers >20%"}
-        return {"name": name, "ok": False, "ms": ms, "detail": f"HTTP {r.status_code}"}
+        if r.status_code == 200 and len(r.text) > 500:
+            return {"name": name, "ok": True, "ms": ms, "detail": f"{len(r.text)//1024}KB received"}
+        return {"name": name, "ok": False, "ms": ms, "detail": f"HTTP {r.status_code} or empty"}
     except Exception as e:
         ms = int((time.time() - start) * 1000)
         return {"name": name, "ok": False, "ms": ms, "detail": str(e)[:80]}
@@ -284,7 +269,7 @@ def run_healthcheck() -> bool:
 
     # Run all checks
     checks = [
-        check_tradingview,
+        check_finviz_premarket,
         check_iborrowdesk,
         check_finviz,
         check_nasdaq_earnings,
@@ -307,7 +292,7 @@ def run_healthcheck() -> bool:
     failures   = [r for r in results if not r["ok"]]
 
     # Critical sources (scanner won't work without these)
-    critical = {"TradingView Scanner", "iborrowdesk.com", "Alpaca Paper API", "Finviz.com (weekly watchlist)"}
+    critical = {"Finviz Pre-Market", "iborrowdesk.com", "Alpaca Paper API", "Finviz.com (weekly watchlist)"}
     critical_failures = [r for r in failures if r["name"] in critical]
 
     print(f"\n  Summary: {len(results) - fail_count} OK / {fail_count} FAIL")
